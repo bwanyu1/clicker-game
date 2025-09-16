@@ -1,0 +1,87 @@
+// v0.1 selection per spec
+export const BUILDINGS = [
+  {
+    id: 'lab_1956',
+    name: '大学研究室',
+    era: '1956',
+    baseRate: 1.0,
+    baseCost: { params: 50 },
+    costGrowth: { params: 1.15 },
+  },
+  {
+    id: 'perceptron_1958',
+    name: 'パーセプトロン装置',
+    era: '1958',
+    baseRate: 1.5,
+    baseCost: { params: 200 },
+    costGrowth: { params: 1.15 },
+    synergy: { with: 'lab_1956', mult: 1.1 },
+  },
+  {
+    id: 'symbolic_1960s',
+    name: '記号推論班',
+    era: '1960s',
+    baseRate: 0.2,
+    baseCost: { params: 1500 },
+    costGrowth: { params: 1.12 },
+    // global +5% if owned
+    globalAddPct: 0.05,
+  },
+  {
+    id: 'gpu_2009',
+    name: 'GPUリグ',
+    era: '2006',
+    baseRate: 250,
+    produces: { compute: 0.2 },
+    baseCost: { params: 5e4, compute: 10 },
+    costGrowth: { params: 1.12, compute: 1.12 },
+  },
+  {
+    id: 'convnet_2012',
+    name: 'ConvNet工場',
+    era: '2012',
+    baseRate: 2500,
+    rateFormula: 'base*(1+dataQ)',
+    baseCost: { params: 5e5, compute: 50 },
+    costGrowth: { params: 1.08, compute: 1.08 },
+    synergy: { with: 'gpu_2009', mult: 1.3 },
+  },
+  {
+    id: 'transformer_2017',
+    name: 'Transformer研究棟',
+    era: '2017',
+    baseRate: 12000,
+    baseCost: { params: 2e6, compute: 120 },
+    costGrowth: { params: 1.08, compute: 1.08 },
+    synergy: { with: 'gpu_2009', mult: 1.25 },
+  },
+  {
+    id: 'datalake_2018',
+    name: 'データレイク',
+    era: '2018',
+    baseRate: 0, // 生産はしないがDataQに寄与（簡易版: 所持>0で+5%）
+    baseCost: { params: 1e7, compute: 500 },
+    costGrowth: { params: 1.1, compute: 1.1 },
+    globalAddPct: 0.05,
+  },
+  {
+    id: 'pretrain_cluster_2018',
+    name: '事前学習クラスタ',
+    era: '2018',
+    baseRate: 80000,
+    baseCost: { params: 5e7, compute: 2000 },
+    costGrowth: { params: 1.08, compute: 1.08 },
+    synergy: { with: 'datalake_2018', mult: 1.3 },
+  },
+  {
+    id: 'genai_inference_2021',
+    name: '生成AI推論センター',
+    era: '2021',
+    baseRate: 300000,
+    baseCost: { params: 2e8, compute: 5000 },
+    costGrowth: { params: 1.07, compute: 1.07 },
+    synergy: { with: 'transformer_2017', mult: 1.2 },
+  },
+];
+
+export const BUILDING_MAP = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));

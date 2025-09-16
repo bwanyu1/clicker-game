@@ -1,0 +1,672 @@
+import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
+import { BUILDINGS, BUILDING_MAP } from '../data/buildings';
+import { ERAS, nextEra, eraIndexById } from '../data/eras';
+import { clamp } from '../utils/number';
+import { saveState, loadState } from '../utils/storage';
+import { UPGRADE_MAP } from '../data/upgrades';
+import { ACHIEVEMENTS } from '../data/achievements';
+import { CONCEPT_CARDS } from '../data/concepts';
+import { QUESTS } from '../data/quests';
+
+const initialState = {
+  params: 0,
+  compute: 0,
+  data: 0,
+  dataQ: 0.0,
+  eraId: ERAS[0].id,
+  totalParams: 0,
+  insights: 0,
+  buildings: Object.fromEntries(BUILDINGS.map((b) => [b.id, { count: 0 }])),
+  upgrades: new Set(),
+  achievements: new Set(),
+  questsClaimed: new Set(),
+  lastSavedAt: Date.now(),
+  activeEvents: [], // [{id, type, endsAt}]
+  ui: { buyQty: 1 },
+  paramUpgrades: {}, // { [buildingId]: tier }
+  conceptXP: 0,           // 思考実験の進捗（60でカード1枚）
+  conceptCards: new Set(),
+  conceptTickets: 0,
+  conceptShards: 0,
+};
+
+function initState() {
+  try {
+    const s = loadState();
+    if (!s) return initialState;
+    // offline catch-up
+    const now = Date.now();
+    const elapsed = Math.min(8 * 3600, Math.floor((now - (s.lastSavedAt || now)) / 1000));
+    let tmp = { ...initialState, ...s };
+    if (elapsed > 0) {
+      const pps = totalParamsPerSec(tmp);
+      const cps = computePerSec(tmp);
+      tmp.params += pps * elapsed;
+      tmp.totalParams += pps * elapsed;
+      tmp.compute += cps * elapsed;
+      // 思考実験: オフライン進行→カードパック（チケット）
+      const eraIdx = eraIndexById(tmp.eraId);
+      const xpGain = Math.floor(elapsed * (0.3 + 0.1 * Math.max(0, eraIdx))); // 秒×係数
+      if (xpGain > 0) {
+        let xp = (tmp.conceptXP || 0) + xpGain;
+        const awards = Math.floor(xp / 60);
+        xp = xp % 60;
+        tmp.conceptXP = xp;
+        if (awards > 0) {
+          tmp.conceptTickets = (tmp.conceptTickets || 0) + awards;
+          tmp.activeEvents = [ ...(tmp.activeEvents||[]), { id:`ticket-${now}`, type:'concept_award', note:`カードパック +${awards}`, endsAt: now + 8000 } ];
+        }
+      }
+    }
+    return tmp;
+  } catch {
+    return initialState;
+  }
+}
+
+function calcGlobalAddPct(state) {
+  // 記号推論: 所持>0で+5%（シンプル版）
+  const symbolic = state.buildings['symbolic_1960s']?.count || 0;
+  let add = symbolic > 0 ? 0.05 : 0;
+  // Insights: 深層効率化 +10%
+  if (state.upgrades.has('deep_efficiency')) add += 0.10;
+  // 概念カード: 加算ボーナス
+  add += conceptProdAddPct(state);
+  // 論文採択イベント: 全体×3 は乗算扱いにし、別でmultに反映するためここでは加算しない
+  return add;
+}
+
+function calcSynergyMult(state, b) {
+  let mult = 1;
+  const s = b.synergy;
+  if (s && state.buildings[s.with]?.count > 0) {
+    mult *= s.mult || 1;
+  }
+  // イベント: SOTA更新 → ConvNet系×2
+  if (b.id === 'convnet_2012' && hasEvent(state, 'sota_break')) mult *= 2;
+  // イベント: 論文採択 → 全体×3（ここで乗算）
+  if (hasEvent(state, 'paper_accept')) mult *= 3;
+  // 建物フォーカスx2
+  if (hasFocusX2(state, b.id)) mult *= 2;
+  // 恒久アップグレード: building-specific multipliers
+  mult *= buildingPermanentMult(state, b.id);
+  return mult;
+}
+
+function effectiveRate(state, b) {
+  const base = b.baseRate;
+  const addPct = calcGlobalAddPct(state); // additive
+  const dataQ = state.dataQ || 0;
+  let rate = base;
+  if (b.rateFormula === 'base*(1+dataQ)') rate = base * (1 + dataQ);
+  rate *= 1 + addPct; // add then apply mult
+  if (hasEvent(state, 'research_boost')) rate *= 1.25;
+  if (hasEvent(state, 'quest_boost')) rate *= 1.2;
+  rate *= conceptRateMult(state);
+  rate *= calcSynergyMult(state, b);
+  return rate;
+}
+
+function totalParamsPerSec(state) {
+  return BUILDINGS.reduce((sum, b) => sum + (state.buildings[b.id]?.count || 0) * effectiveRate(state, b), 0);
+}
+
+function computePerSec(state) {
+  return BUILDINGS.reduce((sum, b) => sum + (state.buildings[b.id]?.count || 0) * (b.produces?.compute || 0), 0);
+}
+
+function clickPower(state) {
+  let p = 1;
+  if (state.upgrades.has('clicker_mania')) p += 1;
+  p += conceptClickAdd(state);
+  return p;
+}
+
+function nextCostWithMods(state, b, count) {
+  const cost = {};
+  const gp = b.costGrowth?.params || 1;
+  const gc = b.costGrowth?.compute || 1;
+  if (b.baseCost.params) cost.params = Math.ceil(b.baseCost.params * Math.pow(gp, count));
+  if (b.baseCost.compute) cost.compute = Math.ceil(b.baseCost.compute * Math.pow(gc, count));
+  // Bootstrap: allow buying the very first GPU without compute cost
+  if (b.id === 'gpu_2009' && count === 0) {
+    cost.compute = 0;
+  }
+  // Insights: Computeコスト減
+  if (cost.compute) {
+    const mult = state.upgrades.has('industrial_lessons') ? 0.85 : 1;
+    cost.compute = Math.ceil(cost.compute * mult);
+  }
+  // 概念カード: Paramsコスト減
+  if (cost.params) {
+    const m = conceptParamsCostMult(state);
+    cost.params = Math.ceil(cost.params * m);
+  }
+  // イベント: GPU大量調達 → GPUリグのParams/Computeコスト−25%
+  if (b.id === 'gpu_2009' && hasEvent(state, 'gpu_sale')) {
+    if (cost.params) cost.params = Math.ceil(cost.params * 0.75);
+    if (cost.compute) cost.compute = Math.ceil(cost.compute * 0.75);
+  }
+  return cost;
+}
+
+function seriesCost(state, b, startCount, qty) {
+  // iterative sum to match per-item ceil and dual currencies
+  let params = 0;
+  let compute = 0;
+  for (let i = 0; i < qty; i++) {
+    const c = nextCostWithMods(state, b, startCount + i);
+    params += c.params || 0;
+    compute += c.compute || 0;
+  }
+  return { params, compute };
+}
+
+function maxAffordableCount(state, id) {
+  const b = BUILDING_MAP[id];
+  const current = state.buildings[id]?.count || 0;
+  let low = 0, high = 1;
+  // exponential search to find an upper bound
+  while (true) {
+    const cost = seriesCost(state, b, current, high);
+    if (cost.params <= state.params && cost.compute <= state.compute) {
+      low = high;
+      high *= 2;
+      if (high > 1e6) break;
+    } else break;
+  }
+  // binary search between low (affordable) and high (maybe not)
+  let l = low, r = high;
+  while (l < r) {
+    const mid = Math.ceil((l + r + 1) / 2);
+    const cost = seriesCost(state, b, current, mid);
+    if (cost.params <= state.params && cost.compute <= state.compute) l = mid; else r = mid - 1;
+  }
+  return l;
+}
+
+function canAfford(state, cost) {
+  const okParams = (cost.params || 0) <= state.params;
+  const okCompute = (cost.compute || 0) <= state.compute;
+  return okParams && okCompute;
+}
+
+function spend(state, cost) {
+  return { ...state, params: state.params - (cost.params || 0), compute: state.compute - (cost.compute || 0) };
+}
+
+function calcPrestigeGain(state) {
+  // 現在保有しているParams量に基づく獲得量
+  const current = state.params || 0;
+  const idx = eraIndexById(state.eraId);
+  const eraFactor = 1 + 0.05 * Math.max(0, idx - 2);
+  const base = Math.floor(Math.sqrt(current / 1e6) * eraFactor);
+  return base;
+}
+
+const GameContext = createContext(null);
+
+function reducer(state, action) {
+  // normalize to prevent undefined Sets from older saves
+  if (!state.upgrades) state = { ...state, upgrades: new Set() };
+  if (!state.achievements) state = { ...state, achievements: new Set() };
+  if (!state.questsClaimed) state = { ...state, questsClaimed: new Set() };
+  if (!state.activeEvents) state = { ...state, activeEvents: [] };
+  if (!state.paramUpgrades) state = { ...state, paramUpgrades: {} };
+  if (state.conceptCards && Array.isArray(state.conceptCards)) state = { ...state, conceptCards: new Set(state.conceptCards) };
+  if (!state.conceptCards) state = { ...state, conceptCards: new Set() };
+  if (!('conceptXP' in state)) state = { ...state, conceptXP: 0 };
+  if (!('conceptTickets' in state)) state = { ...state, conceptTickets: 0 };
+  if (!('conceptShards' in state)) state = { ...state, conceptShards: 0 };
+  switch (action.type) {
+    case 'TICK': {
+      const dt = action.dt;
+      const pps = totalParamsPerSec(state);
+      const cps = computePerSec(state);
+      // auto clicker from upgrades
+      let clickAuto = 0;
+      if (state.upgrades.has('auto_clicker')) {
+        clickAuto += clickPower(state) * dt; // 1 click/sec
+      }
+      const paramsGain = pps * dt;
+      const computeGain = cps * dt;
+      const params = state.params + paramsGain + clickAuto;
+      const totalParams = state.totalParams + paramsGain + clickAuto;
+      // Era progress
+      let eraId = state.eraId;
+      const nxt = nextEra(eraId);
+      if (nxt && totalParams >= nxt.threshold) {
+        eraId = nxt.id;
+      }
+      return { ...state, params, totalParams, compute: state.compute + computeGain, eraId, __ppsCache: pps };
+    }
+    case 'CLICK': {
+      const gain = clickPower(state);
+      return { ...state, params: state.params + gain, totalParams: state.totalParams + gain };
+    }
+    case 'BUY': {
+      const b = BUILDING_MAP[action.id];
+      const count = state.buildings[b.id]?.count || 0;
+      const cost = nextCostWithMods(state, b, count);
+      if (!canAfford(state, cost)) return state;
+      const afterSpend = spend(state, cost);
+      return {
+        ...afterSpend,
+        buildings: { ...afterSpend.buildings, [b.id]: { count: count + 1 } },
+      };
+    }
+    case 'BUY_MANY': {
+      const b = BUILDING_MAP[action.id];
+      const current = state.buildings[b.id]?.count || 0;
+      const qty = Math.max(1, action.qty | 0);
+      const cost = seriesCost(state, b, current, qty);
+      if (!canAfford(state, cost)) return state;
+      const afterSpend = spend(state, cost);
+      return {
+        ...afterSpend,
+        buildings: { ...afterSpend.buildings, [b.id]: { count: current + qty } },
+      };
+    }
+    case 'BUY_PARAM_UPGRADE': {
+      const b = BUILDING_MAP[action.id];
+      if (!b) return state;
+      const tier = state.paramUpgrades[b.id] || 0;
+      const cost = paramUpgradeCost(b, tier);
+      if (state.params < cost) return state;
+      return {
+        ...state,
+        params: state.params - cost,
+        paramUpgrades: { ...state.paramUpgrades, [b.id]: tier + 1 },
+      };
+    }
+    case 'SAVE_MARK': {
+      return { ...state, lastSavedAt: Date.now() };
+    }
+    case 'SET_DATAQ': {
+      return { ...state, dataQ: clamp(action.value, 0, 1) };
+    }
+    case 'SET_BUY_QTY': {
+      const v = [1,10,100].includes(action.value) ? action.value : 1;
+      return { ...state, ui: { ...state.ui, buyQty: v } };
+    }
+    case 'CYCLE_BUY_QTY': {
+      const order = [1,10,100];
+      const i = order.indexOf(state.ui.buyQty);
+      const next = order[(i+1)%order.length];
+      return { ...state, ui: { ...state.ui, buyQty: next } };
+    }
+    case 'SET_RIGHT_TAB': {
+      return { ...state, ui: { ...state.ui, rightTab: action.value|0 } };
+    }
+    case 'BUY_UPGRADE': {
+      const u = UPGRADE_MAP[action.id];
+      if (!u || state.upgrades.has(u.id) || state.insights < u.cost) return state;
+      const next = new Set(state.upgrades);
+      next.add(u.id);
+      return { ...state, insights: state.insights - u.cost, upgrades: next };
+    }
+    case 'DO_PRESTIGE': {
+      const gain = calcPrestigeGain(state) + (state.insights === 0 ? 10 : 0);
+      return {
+        ...initialState,
+        // persistent upgrades stay after prestige
+        upgrades: new Set(state.upgrades),
+        achievements: new Set(state.achievements),
+        insights: state.insights + gain,
+        lastSavedAt: Date.now(),
+        // 概念カードは永続（思考の蓄積）
+        conceptCards: Array.isArray(state.conceptCards) || state.conceptCards instanceof Set ? state.conceptCards : { ...state.conceptCards },
+        conceptXP: state.conceptXP,
+      };
+    }
+    case 'ACH_UNLOCK': {
+      if (state.achievements.has(action.id)) return state;
+      const next = new Set(state.achievements); next.add(action.id);
+      const ac = ACHIEVEMENTS.find(a => a.id === action.id);
+      const note = ac ? ac.name : '実績解放';
+      return { ...state, achievements: next, activeEvents: [...state.activeEvents, { id: `ach-${action.id}-${Date.now()}`, type: 'achieve', endsAt: Date.now() + 8000, note }] };
+    }
+    case 'QUEST_CLAIM': {
+      const q = QUESTS.find(x=> x.id === action.id);
+      if (!q) return state;
+      if (state.questsClaimed.has(q.id)) return state;
+      const nextClaimed = new Set(state.questsClaimed); nextClaimed.add(q.id);
+      let next = { ...state, questsClaimed: nextClaimed };
+      if (q.reward?.params) {
+        next.params += q.reward.params; next.totalParams += q.reward.params;
+      }
+      if (q.reward?.buff?.type === 'quest_boost') {
+        const seconds = q.reward.buff.seconds || 60;
+        next = { ...next, activeEvents: [...next.activeEvents, { id:`qb-${Date.now()}`, type:'quest_boost', endsAt: Date.now()+seconds*1000 }] };
+      }
+      return next;
+    }
+    case 'EVENT_ADD': {
+      const ev = action.event;
+      // avoid duplicates of same type
+      if (state.activeEvents.some((e) => e.type === ev.type)) return state;
+      return { ...state, activeEvents: [...state.activeEvents, ev] };
+    }
+    case 'EVENT_CLEAN': {
+      const now = Date.now();
+      const act = state.activeEvents.filter((e) => e.endsAt > now);
+      return act.length === state.activeEvents.length ? state : { ...state, activeEvents: act };
+    }
+    case 'RESEARCH_BOOST': {
+      const cost = action.cost || 10000;
+      if (state.params < cost) return state;
+      const nextEvents = [...state.activeEvents.filter(e=>e.type!=='research_boost'), { id:`rb-${Date.now()}`, type:'research_boost', endsAt: Date.now()+ (action.durationMs||60000) }];
+      return { ...state, params: state.params - cost, totalParams: state.totalParams - cost, activeEvents: nextEvents };
+    }
+    case 'FOCUS_X2': {
+      const buildingId = action.buildingId;
+      const cost = action.cost || 25000;
+      const duration = action.durationMs || 60000;
+      if (!BUILDING_MAP[buildingId]) return state;
+      if (state.params < cost) return state;
+      // replace existing focus for this building
+      const filtered = state.activeEvents.filter(e => !(e.type==='focus_x2' && e.buildingId===buildingId));
+      const ev = { id:`fx2-${buildingId}-${Date.now()}`, type:'focus_x2', buildingId, endsAt: Date.now()+duration };
+      return { ...state, params: state.params - cost, totalParams: state.totalParams - cost, activeEvents: [...filtered, ev] };
+    }
+    case 'OPEN_PACK': {
+      if ((state.conceptTickets||0) <= 0) return state;
+      const pick = rollConcept(state.conceptCards);
+      const cards = { ...(state.conceptCards||{}) };
+      cards[pick.id] = (cards[pick.id]||0) + 1;
+      const tickets = (state.conceptTickets||0) - 1;
+      const events = [...state.activeEvents, { id:`new-${Date.now()}`, type:'concept_award', note:`カード: ${pick.name} ×${cards[pick.id]}`, endsAt: Date.now()+8000 }];
+      return { ...state, conceptTickets: tickets, conceptCards: cards, activeEvents: events };
+    }
+    case 'SHARDS_TO_TICKET': {
+      if ((state.conceptShards||0) < 100) return state;
+      return { ...state, conceptShards: state.conceptShards - 100, conceptTickets: (state.conceptTickets||0) + 1 };
+    }
+    default:
+      return state;
+  }
+}
+
+export function GameProvider({ children }) {
+  const [state, dispatch] = useReducer(reducer, undefined, initState);
+  const savedOnce = useRef(false);
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+  const hydratedRef = useRef(false); // avoid saving initial empty state before load
+  useEffect(() => { hydratedRef.current = true; }, []);
+
+  // Tick loop
+  useEffect(() => {
+    const id = setInterval(() => {
+      dispatch({ type: 'TICK', dt: 1 });
+      // rare event roll using latest state via ref
+      rollEvent(dispatch, stateRef.current);
+      // cleanup expired
+      dispatch({ type: 'EVENT_CLEAN' });
+      // achievements
+      checkAchievements(dispatch, stateRef.current);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Hotkeys: numbers buy, B to cycle qty
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target && (e.target.tagName||'').toLowerCase()) || '';
+      if (tag === 'input' || tag === 'textarea' || e.isComposing) return;
+      if (e.key.toLowerCase() === 'b') {
+        dispatch({ type: 'CYCLE_BUY_QTY' });
+        return;
+      }
+      const n = parseInt(e.key, 10);
+      if (n>=1 && n<=9) {
+        const ids = availableBuildingIds(stateRef.current);
+        const id = ids[n-1];
+        if (id) dispatch({ type:'BUY_MANY', id, qty: stateRef.current.ui.buyQty });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Auto save every 30s
+  useEffect(() => {
+    const id = setInterval(() => {
+      dispatch({ type: 'SAVE_MARK' });
+      // Read current via closure
+      if (!savedOnce.current) savedOnce.current = true;
+      // ensure save is called even if effects are throttled
+      // eslint-disable-next-line no-console
+      console.log('[autosave:tick]');
+      saveState(stateRef.current);
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Persist on state change of interest
+  useEffect(() => {
+    if (!hydratedRef.current) return; // skip first paint prior to load
+    saveState(state);
+  }, [state]);
+
+  // Save on tab close / reload
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      saveState(stateRef.current);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') saveState(stateRef.current);
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
+  const api = useMemo(() => ({
+    state,
+    click: () => dispatch({ type: 'CLICK' }),
+    buyBuilding: (id) => dispatch({ type: 'BUY', id }),
+    buyMany: (id, qty) => dispatch({ type: 'BUY_MANY', id, qty }),
+    setDataQ: (v) => dispatch({ type: 'SET_DATAQ', value: v }),
+    setBuyQty: (v) => dispatch({ type: 'SET_BUY_QTY', value: v }),
+    cycleBuyQty: () => dispatch({ type: 'CYCLE_BUY_QTY' }),
+    setRightTab: (i) => dispatch({ type: 'SET_RIGHT_TAB', value: i }),
+    doPrestige: () => dispatch({ type: 'DO_PRESTIGE' }),
+    buyUpgrade: (id) => dispatch({ type: 'BUY_UPGRADE', id }),
+    claimQuest: (id) => dispatch({ type: 'QUEST_CLAIM', id }),
+    startResearchBoost: (cost, durationMs) => dispatch({ type:'RESEARCH_BOOST', cost, durationMs }),
+    buyParamUpgrade: (id) => dispatch({ type:'BUY_PARAM_UPGRADE', id }),
+    startFocusX2: (buildingId, cost, durationMs) => dispatch({ type:'FOCUS_X2', buildingId, cost, durationMs }),
+    openPack: () => dispatch({ type:'OPEN_PACK' }),
+    shardsToTicket: () => dispatch({ type:'SHARDS_TO_TICKET' }),
+    paramsPerSec: () => totalParamsPerSec(state),
+    computePerSec: () => computePerSec(state),
+    clickPower: () => clickPower(state),
+    effectiveRateFor: (id) => {
+      const b = BUILDING_MAP[id];
+      if (!b) return 0;
+      return effectiveRate(state, b);
+    },
+    nextCost: (id) => {
+      const b = BUILDING_MAP[id];
+      const count = state.buildings[id]?.count || 0;
+      return nextCostWithMods(state, b, count);
+    },
+    canBuy: (id) => {
+      const b = BUILDING_MAP[id];
+      const count = state.buildings[id]?.count || 0;
+      const cost = nextCostWithMods(state, b, count);
+      return canAfford(state, cost);
+    },
+    maxAffordable: (id) => maxAffordableCount(state, id),
+    calcPrestigeGain: () => calcPrestigeGain(state),
+  }), [state]);
+
+  return <GameContext.Provider value={api}>{children}</GameContext.Provider>;
+}
+
+export function useGame() {
+  const ctx = useContext(GameContext);
+  if (!ctx) throw new Error('useGame must be inside GameProvider');
+  return ctx;
+}
+
+// Helpers: events
+function hasEvent(state, type) {
+  return state.activeEvents?.some((e) => e.type === type && e.endsAt > Date.now());
+}
+
+function hasFocusX2(state, buildingId){
+  return state.activeEvents?.some((e)=> e.type==='focus_x2' && e.buildingId===buildingId && e.endsAt > Date.now());
+}
+
+function buildingPermanentMult(state, buildingId){
+  if (!state.upgrades) return 1;
+  let m = 1;
+  for (const id of state.upgrades) {
+    const u = UPGRADE_MAP[id];
+    const bm = u && u.effects && u.effects.buildingMult;
+    if (bm && bm[buildingId]) m *= bm[buildingId];
+  }
+  const tier = state.paramUpgrades?.[buildingId] || 0;
+  if (tier > 0) m *= Math.pow(1.2, tier);
+  return m;
+}
+
+function paramUpgradeCost(b, tier){
+  const base = Math.max(50, Math.floor((b.baseCost?.params || 50) * 15));
+  const growth = 1.6;
+  return Math.ceil(base * Math.pow(growth, tier));
+}
+
+function rollEvent(dispatch, state) {
+  // base 1/180 per second
+  let p = 1 / 180;
+  if (state.upgrades.has('grant_network')) p *= 1.5;
+  p *= conceptEventRateMult(state);
+  if (Math.random() < p) {
+    // pick event by weights
+    const pick = randomChoice([
+      { type: 'paper_accept', min: 30, max: 60, w: 1 },
+      { type: 'gpu_sale', min: 60, max: 60, w: 1 },
+      { type: 'sota_break', min: 30, max: 30, w: 1 },
+    ]);
+    const dur = randInt(pick.min, pick.max);
+    dispatch({ type: 'EVENT_ADD', event: { id: `${pick.type}-${Date.now()}`, type: pick.type, endsAt: Date.now() + dur * 1000 } });
+  }
+}
+
+function randomChoice(list) {
+  const sum = list.reduce((s, x) => s + (x.w || 1), 0);
+  let r = Math.random() * sum;
+  for (const x of list) {
+    r -= x.w || 1;
+    if (r <= 0) return x;
+  }
+  return list[list.length - 1];
+}
+
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+
+// Concept cards aggregation
+function conceptProdAddPct(state){
+  let add = 0;
+  const cc = state.conceptCards || {};
+  for (const id in cc) {
+    const cnt = cc[id]||0; if (!cnt) continue;
+    const c = CONCEPT_CARDS.find(x=> x.id === id);
+    if (c?.effects?.prodAddPct) add += c.effects.prodAddPct * cnt;
+  }
+  return add;
+}
+
+// --- Concept pack gacha helpers ---
+function rarityShard(r){
+  if (r==='L') return 50; if (r==='R') return 25; if (r==='U') return 10; return 5;
+}
+
+function rollConcept(ownedSet){
+  // weights by rarity
+  const weights = { C: 65, U: 25, R: 9, L: 1 };
+  const pool = [];
+  for (const c of CONCEPT_CARDS) {
+    pool.push({ c, w: weights[c.rarity] || 1 });
+  }
+  // sample by weight
+  const total = pool.reduce((s,x)=>s+x.w,0);
+  let r = Math.random()*total;
+  for (const x of pool){ r -= x.w; if (r<=0) return x.c; }
+  return pool[pool.length-1].c;
+}
+
+function conceptRateMult(state){
+  let m = 1;
+  const cc = state.conceptCards || {};
+  for (const id in cc) {
+    const cnt = cc[id]||0; if (!cnt) continue;
+    const c = CONCEPT_CARDS.find(x=> x.id === id);
+    if (c?.effects?.rateMult) m *= Math.pow(c.effects.rateMult, cnt);
+  }
+  return m;
+}
+
+function conceptParamsCostMult(state){
+  let m = 1;
+  const cc = state.conceptCards || {};
+  for (const id in cc) {
+    const cnt = cc[id]||0; if (!cnt) continue;
+    const c = CONCEPT_CARDS.find(x=> x.id === id);
+    if (c?.effects?.paramsCostMult) m *= Math.pow(c.effects.paramsCostMult, cnt);
+  }
+  return m;
+}
+
+function conceptEventRateMult(state){
+  let m = 1;
+  const cc = state.conceptCards || {};
+  for (const id in cc) {
+    const cnt = cc[id]||0; if (!cnt) continue;
+    const c = CONCEPT_CARDS.find(x=> x.id === id);
+    if (c?.effects?.eventRateMult) m *= Math.pow(c.effects.eventRateMult, cnt);
+  }
+  return m;
+}
+
+function conceptClickAdd(state){
+  let add = 0;
+  const cc = state.conceptCards || {};
+  for (const id in cc) {
+    const cnt = cc[id]||0; if (!cnt) continue;
+    const c = CONCEPT_CARDS.find(x=> x.id === id);
+    if (c?.effects?.clickPowerAdd) add += c.effects.clickPowerAdd * cnt;
+  }
+  return add;
+}
+
+// Expose light debug helpers for manual testing in dev
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line no-undef
+  window.debugClicker = {
+    saveNow: () => saveState(window.__gameState || {}),
+  };
+}
+
+// Achievements check
+function checkAchievements(dispatch, state) {
+  for (const a of ACHIEVEMENTS) {
+    if (state.achievements.has(a.id)) continue;
+    if (a.type === 'total_params' && (state.totalParams || 0) >= a.value) dispatch({ type: 'ACH_UNLOCK', id: a.id });
+    if (a.type === 'era' && state.eraId === a.value) dispatch({ type: 'ACH_UNLOCK', id: a.id });
+    if (a.type === 'building' && (state.buildings[a.building]?.count || 0) >= a.value) dispatch({ type: 'ACH_UNLOCK', id: a.id });
+    if (a.type === 'insights' && (state.insights || 0) >= a.value) dispatch({ type: 'ACH_UNLOCK', id: a.id });
+  }
+}
+
+function availableBuildingIds(state){
+  const order = ['1956','1958','1960s','2006','2012','2017','2018','2021'];
+  const eraIdx = order.indexOf(state.eraId);
+  return BUILDINGS.filter(b=> order.indexOf(b.era) <= eraIdx).map(b=> b.id);
+}
