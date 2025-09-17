@@ -5,8 +5,8 @@ const VERSION = 1;
 export function saveState(state) {
   try {
     const copy = { ...state, lastSavedAt: Date.now(), _version: VERSION };
-    // Avoid circular: convert Set to array
-    copy.upgrades = Array.from(copy.upgrades || []);
+    // Avoid circular: convert Set to array (legacy), keep upgrades as map
+    // upgrades: { [id]: level }
     copy.achievements = Array.from(copy.achievements || []);
     copy.questsClaimed = Array.from(copy.questsClaimed || []);
     copy.paramUpgrades = copy.paramUpgrades || {};
@@ -36,7 +36,16 @@ export function loadState() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     parsed._version = parsed._version || 1;
-    parsed.upgrades = new Set(parsed.upgrades || []);
+    // upgrades migration: accept set/array -> map of levels
+    if (parsed.upgrades instanceof Array) {
+      const map = {}; for (const id of parsed.upgrades) map[id] = (map[id]||0) + 1; parsed.upgrades = map;
+    } else if (parsed.upgrades && typeof parsed.upgrades === 'object' && !(parsed.upgrades instanceof Set)) {
+      // keep as is
+    } else if (parsed.upgrades instanceof Set) {
+      const map = {}; parsed.upgrades.forEach(id => map[id] = (map[id]||0) + 1); parsed.upgrades = map;
+    } else {
+      parsed.upgrades = {};
+    }
     parsed.achievements = new Set(parsed.achievements || []);
     parsed.questsClaimed = new Set(parsed.questsClaimed || []);
     parsed.paramUpgrades = parsed.paramUpgrades || {};
@@ -67,7 +76,15 @@ export function importSave(raw) {
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
-    parsed.upgrades = new Set(parsed.upgrades || []);
+    if (parsed.upgrades instanceof Array) {
+      const map = {}; for (const id of parsed.upgrades) map[id]=(map[id]||0)+1; parsed.upgrades = map;
+    } else if (parsed.upgrades && typeof parsed.upgrades === 'object' && !(parsed.upgrades instanceof Set)) {
+      // keep map
+    } else if (parsed.upgrades instanceof Set) {
+      const map = {}; parsed.upgrades.forEach(id => map[id]=(map[id]||0)+1); parsed.upgrades = map;
+    } else {
+      parsed.upgrades = {};
+    }
     parsed.achievements = new Set(parsed.achievements || []);
     parsed.questsClaimed = new Set(parsed.questsClaimed || []);
     parsed.paramUpgrades = parsed.paramUpgrades || {};

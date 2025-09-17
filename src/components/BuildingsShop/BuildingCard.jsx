@@ -44,7 +44,10 @@ function useSeriesCost(state, b, startCount, qty){
     const gc = b.costGrowth?.compute || 1;
     let p = b.baseCost.params ? Math.ceil(b.baseCost.params * Math.pow(gp, idx)) : 0;
     let c = b.baseCost.compute ? Math.ceil(b.baseCost.compute * Math.pow(gc, idx)) : 0;
-    if (c){ if (state.upgrades.has('industrial_lessons')) c = Math.ceil(c * 0.85); }
+    if (c){
+      const lvl = (state.upgrades?.industrial_lessons || 0);
+      if (lvl > 0) c = Math.ceil(c * Math.pow(0.85, lvl));
+    }
     if (b.id === 'gpu_2009' && state.activeEvents?.some(e=>e.type==='gpu_sale' && e.endsAt>Date.now())){
       if (p) p = Math.ceil(p*0.75);
       if (c) c = Math.ceil(c*0.75);

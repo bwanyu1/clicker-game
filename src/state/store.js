@@ -18,7 +18,7 @@ const initialState = {
   totalParams: 0,
   insights: 0,
   buildings: Object.fromEntries(BUILDINGS.map((b) => [b.id, { count: 0 }])),
-  upgrades: new Set(),
+  upgrades: {}, // { [upgradeId]: level }
   achievements: new Set(),
   questsClaimed: new Set(),
   lastSavedAt: Date.now(),
@@ -26,7 +26,7 @@ const initialState = {
   ui: { buyQty: 1 },
   paramUpgrades: {}, // { [buildingId]: tier }
   conceptXP: 0,           // 思考実験の進捗（60でカード1枚）
-  conceptCards: new Set(),
+  conceptCards: {},
   conceptTickets: 0,
   conceptShards: 0,
 };
@@ -39,6 +39,13 @@ function initState() {
     const now = Date.now();
     const elapsed = Math.min(8 * 3600, Math.floor((now - (s.lastSavedAt || now)) / 1000));
     let tmp = { ...initialState, ...s };
+    // migrate upgrades Set/Array -> map
+    if (!tmp.upgrades || tmp.upgrades instanceof Set || Array.isArray(tmp.upgrades)) {
+      const map = {};
+      if (tmp.upgrades instanceof Set) tmp.upgrades.forEach(id => map[id]=(map[id]||0)+1);
+      if (Array.isArray(tmp.upgrades)) for (const id of tmp.upgrades) map[id]=(map[id]||0)+1;
+      tmp.upgrades = map;
+    }
     if (elapsed > 0) {
       const pps = totalParamsPerSec(tmp);
       const cps = computePerSec(tmp);
@@ -69,8 +76,11 @@ function calcGlobalAddPct(state) {
   // 記号推論: 所持>0で+5%（シンプル版）
   const symbolic = state.buildings['symbolic_1960s']?.count || 0;
   let add = symbolic > 0 ? 0.05 : 0;
-  // Insights: 深層効率化 +10%
-  if (state.upgrades.has('deep_efficiency')) add += 0.10;
+  // Insights: 深層効率化 +10% per level
+  {
+    const lvl = getUpgradeLevel(state, 'deep_efficiency');
+    if (lvl > 0) add += 0.10 * lvl;
+  }
   // 概念カード: 加算ボーナス
   add += conceptProdAddPct(state);
   // 論文採択イベント: 全体×3 は乗算扱いにし、別でmultに反映するためここでは加算しない
@@ -129,7 +139,10 @@ function computePerSec(state) {
 
 function clickPower(state) {
   let p = 1;
-  if (state.upgrades.has('clicker_mania')) p += 1;
+  {
+    const lvl = getUpgradeLevel(state, 'clicker_mania');
+    if (lvl > 0) p += 1 * lvl;
+  }
   p += conceptClickAdd(state);
   return p;
 }
@@ -146,7 +159,8 @@ function nextCostWithMods(state, b, count) {
   }
   // Insights: Computeコスト減
   if (cost.compute) {
-    const mult = state.upgrades.has('industrial_lessons') ? 0.85 : 1;
+    const lvl = getUpgradeLevel(state, 'industrial_lessons');
+    const mult = lvl > 0 ? Math.pow(0.85, lvl) : 1;
     cost.compute = Math.ceil(cost.compute * mult);
   }
   // 概念カード: Paramsコスト減
@@ -224,14 +238,21 @@ function calcPrestigeGain(state) {
 const GameContext = createContext(null);
 
 function reducer(state, action) {
-  // normalize to prevent undefined Sets from older saves
-  if (!state.upgrades) state = { ...state, upgrades: new Set() };
+  // normalize/migrate legacy shapes
+  if (!state.upgrades || state.upgrades instanceof Set || Array.isArray(state.upgrades)) {
+    const map = {};
+    if (state.upgrades instanceof Set) state.upgrades.forEach(id => map[id]=(map[id]||0)+1);
+    if (Array.isArray(state.upgrades)) for (const id of state.upgrades) map[id]=(map[id]||0)+1;
+    state = { ...state, upgrades: map };
+  }
   if (!state.achievements) state = { ...state, achievements: new Set() };
   if (!state.questsClaimed) state = { ...state, questsClaimed: new Set() };
   if (!state.activeEvents) state = { ...state, activeEvents: [] };
   if (!state.paramUpgrades) state = { ...state, paramUpgrades: {} };
-  if (state.conceptCards && Array.isArray(state.conceptCards)) state = { ...state, conceptCards: new Set(state.conceptCards) };
-  if (!state.conceptCards) state = { ...state, conceptCards: new Set() };
+  if (state.conceptCards && Array.isArray(state.conceptCards)) {
+    const obj = {}; for (const id of state.conceptCards) obj[id]=(obj[id]||0)+1; state = { ...state, conceptCards: obj };
+  }
+  if (!state.conceptCards || state.conceptCards instanceof Set) state = { ...state, conceptCards: (state.conceptCards instanceof Set ? Object.fromEntries(Array.from(state.conceptCards).map(id=>[id,1])) : {}) };
   if (!('conceptXP' in state)) state = { ...state, conceptXP: 0 };
   if (!('conceptTickets' in state)) state = { ...state, conceptTickets: 0 };
   if (!('conceptShards' in state)) state = { ...state, conceptShards: 0 };
@@ -242,8 +263,9 @@ function reducer(state, action) {
       const cps = computePerSec(state);
       // auto clicker from upgrades
       let clickAuto = 0;
-      if (state.upgrades.has('auto_clicker')) {
-        clickAuto += clickPower(state) * dt; // 1 click/sec
+      {
+        const lvl = getUpgradeLevel(state, 'auto_clicker');
+        if (lvl > 0) clickAuto += clickPower(state) * dt * lvl; // lvl clicks/sec
       }
       const paramsGain = pps * dt;
       const computeGain = cps * dt;
@@ -317,17 +339,19 @@ function reducer(state, action) {
     }
     case 'BUY_UPGRADE': {
       const u = UPGRADE_MAP[action.id];
-      if (!u || state.upgrades.has(u.id) || state.insights < u.cost) return state;
-      const next = new Set(state.upgrades);
-      next.add(u.id);
-      return { ...state, insights: state.insights - u.cost, upgrades: next };
+      if (!u) return state;
+      const level = getUpgradeLevel(state, u.id);
+      const cost = upgradeCost(u, level);
+      if (state.insights < cost) return state;
+      const next = { ...state.upgrades, [u.id]: level + 1 };
+      return { ...state, insights: state.insights - cost, upgrades: next };
     }
     case 'DO_PRESTIGE': {
       const gain = calcPrestigeGain(state) + (state.insights === 0 ? 10 : 0);
       return {
         ...initialState,
         // persistent upgrades stay after prestige
-        upgrades: new Set(state.upgrades),
+        upgrades: { ...state.upgrades },
         achievements: new Set(state.achievements),
         insights: state.insights + gain,
         lastSavedAt: Date.now(),
@@ -493,6 +517,12 @@ export function GameProvider({ children }) {
     setRightTab: (i) => dispatch({ type: 'SET_RIGHT_TAB', value: i }),
     doPrestige: () => dispatch({ type: 'DO_PRESTIGE' }),
     buyUpgrade: (id) => dispatch({ type: 'BUY_UPGRADE', id }),
+    getUpgradeLevel: (id) => getUpgradeLevel(state, id),
+    upgradeNextCost: (id) => {
+      const u = UPGRADE_MAP[id];
+      if (!u) return 0;
+      return upgradeCost(u, getUpgradeLevel(state, id));
+    },
     claimQuest: (id) => dispatch({ type: 'QUEST_CLAIM', id }),
     startResearchBoost: (cost, durationMs) => dispatch({ type:'RESEARCH_BOOST', cost, durationMs }),
     buyParamUpgrade: (id) => dispatch({ type:'BUY_PARAM_UPGRADE', id }),
@@ -543,10 +573,11 @@ function hasFocusX2(state, buildingId){
 function buildingPermanentMult(state, buildingId){
   if (!state.upgrades) return 1;
   let m = 1;
-  for (const id of state.upgrades) {
+  for (const [id, lvl] of Object.entries(state.upgrades || {})) {
+    if (!lvl) continue;
     const u = UPGRADE_MAP[id];
     const bm = u && u.effects && u.effects.buildingMult;
-    if (bm && bm[buildingId]) m *= bm[buildingId];
+    if (bm && bm[buildingId]) m *= Math.pow(bm[buildingId], lvl);
   }
   const tier = state.paramUpgrades?.[buildingId] || 0;
   if (tier > 0) m *= Math.pow(1.2, tier);
@@ -562,7 +593,10 @@ function paramUpgradeCost(b, tier){
 function rollEvent(dispatch, state) {
   // base 1/180 per second
   let p = 1 / 180;
-  if (state.upgrades.has('grant_network')) p *= 1.5;
+  {
+    const lvl = getUpgradeLevel(state, 'grant_network');
+    if (lvl > 0) p *= Math.pow(1.5, lvl);
+  }
   p *= conceptEventRateMult(state);
   if (Math.random() < p) {
     // pick event by weights
@@ -647,6 +681,17 @@ function conceptEventRateMult(state){
     if (c?.effects?.eventRateMult) m *= Math.pow(c.effects.eventRateMult, cnt);
   }
   return m;
+}
+
+// ------- Upgrades helpers (multi-level) -------
+function getUpgradeLevel(state, id){
+  return (state.upgrades && state.upgrades[id]) || 0;
+}
+
+function upgradeCost(upg, level){
+  const base = upg.cost || 0;
+  const growth = upg.costGrowth || 1.6;
+  return Math.ceil(base * Math.pow(growth, level));
 }
 
 function conceptClickAdd(state){
