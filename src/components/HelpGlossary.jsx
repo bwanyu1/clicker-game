@@ -22,9 +22,14 @@ export default function HelpGlossary() {
           <dd>中盤以降の高級建物の <b>第二コスト</b>。主に <b>GPUリグ</b> が毎秒産出する。GPUは初回のみCompute不要で購入可。</dd>
           <dt>Data / DataQ</dt>
           <dd>
-            データ駆動の建物の効率に影響。DataQは0–100%（UIのスライダーで調整）。
-            ConvNet/Transformer/事前学習/生成AIなどは <b>データ親和性</b> に応じて
-            生産が <code>×(1 + DataQ × 親和性)</code> で強化されます。
+            データ駆動の建物の効率に影響。DataQは0–100%（UIスライダー）。
+            <br/>
+            強化: ConvNet/Transformer/事前学習/生成AIなどは <b>データ親和性</b> に応じて
+            <code>×(1 + DataQ × 親和性)</code> で強化。
+            <br/>
+            トレードオフ: 古典/記号系（大学研究室・パーセプトロン・記号推論）は
+            DataQ上昇に応じて少し効率低下（最低90%までは維持）。
+            さらにデータ駆動系の<b>購入Paramsコスト</b>は DataQ に応じて最大+25%上昇します。
           </dd>
           <dt>Insights</dt>
           <dd>プレステージ（任意リセット）で獲得する恒久通貨。アップグレードや建物別×2などに使用（周回を超えて維持）。</dd>

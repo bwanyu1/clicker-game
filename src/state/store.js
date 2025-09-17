@@ -105,6 +105,11 @@ function effectiveRate(state, b) {
     // backward compatibility if any leftover definitions exist
     rate = base * (1 + dataQ);
   }
+  // Trade-off: classic/symbolic lines lose efficiency as DataQ rises
+  if (b.dataQOpposition) {
+    const opp = Math.max(0.1, 1 - dataQ * b.dataQOpposition);
+    rate *= opp;
+  }
   rate *= 1 + addPct; // add then apply mult
   if (hasEvent(state, 'research_boost')) rate *= 1.25;
   if (hasEvent(state, 'quest_boost')) rate *= 1.2;
@@ -152,6 +157,11 @@ function nextCostWithMods(state, b, count) {
   if (b.id === 'gpu_2009' && hasEvent(state, 'gpu_sale')) {
     if (cost.params) cost.params = Math.ceil(cost.params * 0.75);
     if (cost.compute) cost.compute = Math.ceil(cost.compute * 0.75);
+  }
+  // Trade-off: data-driven lines become costlier as DataQ rises (Paramsのみ)
+  if (b.dataQAffinity && cost.params) {
+    const dm = 1 + (state.dataQ || 0) * 0.25; // up to +25%
+    cost.params = Math.ceil(cost.params * dm);
   }
   return cost;
 }

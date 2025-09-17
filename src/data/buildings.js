@@ -5,6 +5,7 @@ export const BUILDINGS = [
     name: '大学研究室',
     era: '1956',
     baseRate: 1.0,
+    dataQOpposition: 0.30,
     baseCost: { params: 50 },
     costGrowth: { params: 1.15 },
   },
@@ -13,6 +14,7 @@ export const BUILDINGS = [
     name: 'パーセプトロン装置',
     era: '1958',
     baseRate: 1.5,
+    dataQOpposition: 0.25,
     baseCost: { params: 200 },
     costGrowth: { params: 1.15 },
     synergy: { with: 'lab_1956', mult: 1.1 },
@@ -22,6 +24,7 @@ export const BUILDINGS = [
     name: '記号推論班',
     era: '1960s',
     baseRate: 0.2,
+    dataQOpposition: 0.35,
     baseCost: { params: 1500 },
     costGrowth: { params: 1.12 },
     // global +5% if owned
