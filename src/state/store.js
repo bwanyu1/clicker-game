@@ -7,6 +7,7 @@ import { UPGRADE_MAP } from '../data/upgrades';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { CONCEPT_CARDS } from '../data/concepts';
 import { QUESTS } from '../data/quests';
+import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR } from '../config/balance';
 
 const initialState = {
   params: 0,
@@ -98,7 +99,18 @@ function effectiveRate(state, b) {
   const addPct = calcGlobalAddPct(state); // additive
   const dataQ = state.dataQ || 0;
   let rate = base;
-  if (b.rateFormula === 'base*(1+dataQ)') rate = base * (1 + dataQ);
+  // DataQ effect across buildings via dataQAffinity (0..1 typical)
+  if (b.dataQAffinity) {
+    rate *= 1 + dataQ * b.dataQAffinity;
+  } else if (b.rateFormula === 'base*(1+dataQ)') {
+    // backward compatibility if any leftover definitions exist
+    rate = base * (1 + dataQ);
+  }
+  // Trade-off: classic/symbolic lines lose efficiency as DataQ rises
+  if (b.dataQOpposition) {
+    const opp = Math.max(DATA_Q_OPPOSITION_FLOOR, 1 - dataQ * b.dataQOpposition);
+    rate *= opp;
+  }
   rate *= 1 + addPct; // add then apply mult
   if (hasEvent(state, 'research_boost')) rate *= 1.25;
   if (hasEvent(state, 'quest_boost')) rate *= 1.2;
@@ -146,6 +158,11 @@ function nextCostWithMods(state, b, count) {
   if (b.id === 'gpu_2009' && hasEvent(state, 'gpu_sale')) {
     if (cost.params) cost.params = Math.ceil(cost.params * 0.75);
     if (cost.compute) cost.compute = Math.ceil(cost.compute * 0.75);
+  }
+  // Trade-off: data-driven lines become costlier as DataQ rises (Paramsのみ)
+  if (b.dataQAffinity && cost.params) {
+    const dm = 1 + (state.dataQ || 0) * DATA_Q_COST_MULTIPLIER;
+    cost.params = Math.ceil(cost.params * dm);
   }
   return cost;
 }
