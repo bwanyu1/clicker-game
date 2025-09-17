@@ -317,7 +317,7 @@ function reducer(state, action) {
   if (state.artifacts && typeof state.artifacts === 'object') {
     const next = {};
     for (const k of Object.keys(state.artifacts)) {
-      const v = state.artifacts[k] | 0;
+      const v = state.artifacts[k] || 0;
       if (!v) continue;
       const key = (k.includes('@') ? k : `${k}@C`);
       next[key] = (next[key]||0) + v;
