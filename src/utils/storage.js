@@ -88,7 +88,14 @@ export function importSave(raw) {
     parsed.achievements = new Set(parsed.achievements || []);
     parsed.questsClaimed = new Set(parsed.questsClaimed || []);
     parsed.paramUpgrades = parsed.paramUpgrades || {};
-    parsed.conceptCards = new Set(parsed.conceptCards || []);
+    // conceptCards: accept array/set/map -> object map id->count
+    if (Array.isArray(parsed.conceptCards)) {
+      const obj = {}; for (const id of parsed.conceptCards) obj[id]=(obj[id]||0)+1; parsed.conceptCards = obj;
+    } else if (parsed.conceptCards instanceof Set) {
+      const obj = {}; parsed.conceptCards.forEach(id => obj[id]=(obj[id]||0)+1); parsed.conceptCards = obj;
+    } else if (!parsed.conceptCards || typeof parsed.conceptCards !== 'object') {
+      parsed.conceptCards = {};
+    }
     parsed.conceptXP = parsed.conceptXP || 0;
     return parsed;
   } catch {

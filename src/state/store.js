@@ -73,9 +73,13 @@ function initState() {
 }
 
 function calcGlobalAddPct(state) {
-  // 記号推論: 所持>0で+5%（シンプル版）
-  const symbolic = state.buildings['symbolic_1960s']?.count || 0;
-  let add = symbolic > 0 ? 0.05 : 0;
+  // Building-defined global additive bonuses (once per ownership)
+  let add = 0;
+  for (const b of BUILDINGS) {
+    if (b.globalAddPct && (state.buildings[b.id]?.count || 0) > 0) {
+      add += b.globalAddPct;
+    }
+  }
   // Insights: 深層効率化 +10% per level
   {
     const lvl = getUpgradeLevel(state, 'deep_efficiency');
