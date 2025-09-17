@@ -17,6 +17,7 @@ import Tabs from './components/Tabs';
 import ParamTuningPanel from './components/ParamTuningPanel';
 import HelpGlossary from './components/HelpGlossary';
 import ConceptsPanel from './components/ConceptsPanel';
+import ArtifactsPanel from './components/ArtifactsPanel';
 import { formatNumber } from './utils/number';
 import React from 'react';
 
@@ -155,6 +156,7 @@ function RightTabs(){
     { label: 'クリック', content: <ClickPanel /> },
     { label: 'ショップ', content: <BuildingsShop /> },
     { label: 'アップグレード', content: <UpgradesShop /> },
+    { label: 'アーティファクト', content: <ArtifactsPanel /> },
     { label: 'チューニング', content: <ParamTuningPanel /> },
     { label: 'カード', content: <ConceptsPanel /> },
     { label: 'クエスト', content: <QuestsPanel /> },
