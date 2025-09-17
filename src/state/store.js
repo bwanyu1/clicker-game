@@ -7,7 +7,7 @@ import { UPGRADE_MAP } from '../data/upgrades';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { CONCEPT_CARDS } from '../data/concepts';
 import { QUESTS } from '../data/quests';
-import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR } from '../config/balance';
+import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR, CODING_XP_PER_CLICK, CODING_XP_BASE, CODING_XP_GROWTH, CODING_CLICK_POWER_PER_LEVEL } from '../config/balance';
 
 const initialState = {
   params: 0,
@@ -29,6 +29,8 @@ const initialState = {
   conceptCards: {},
   conceptTickets: 0,
   conceptShards: 0,
+  codingXP: 0,
+  codingLevel: 0,
 };
 
 function initState() {
@@ -149,14 +151,29 @@ function computePerSec(state) {
   return BUILDINGS.reduce((sum, b) => sum + (state.buildings[b.id]?.count || 0) * (b.produces?.compute || 0), 0);
 }
 
-function clickPower(state) {
-  let p = 1;
-  {
-    const lvl = getUpgradeLevel(state, 'clicker_mania');
-    if (lvl > 0) p += 1 * lvl;
-  }
-  p += conceptClickAdd(state);
+function coreClickPower(state) {
+  // 基礎クリック＋カード加算 → クリックマニアで×2^Lv
+  let p = 1 + conceptClickAdd(state);
+  const lvl = getUpgradeLevel(state, 'clicker_mania');
+  if (lvl > 0) p *= Math.pow(2, lvl);
   return p;
+}
+
+function clickPower(state) {
+  // 手動クリック用: (基礎 + カード + CLv加算) × 2^Lv(clicker_mania)
+  const br = clickPowerBreakdown(state);
+  return br.total;
+}
+
+function clickPowerBreakdown(state){
+  const base = 1;
+  const cards = conceptClickAdd(state);
+  const coding = (state.codingLevel || 0) * CODING_CLICK_POWER_PER_LEVEL;
+  const sum = base + cards + coding;
+  const maniaLvl = getUpgradeLevel(state, 'clicker_mania');
+  const maniaMult = maniaLvl > 0 ? Math.pow(2, maniaLvl) : 1;
+  const total = sum * maniaMult;
+  return { base, cards, coding, sum, maniaLvl, maniaMult, total };
 }
 
 function nextCostWithMods(state, b, count) {
@@ -249,6 +266,10 @@ function calcPrestigeGain(state) {
 
 const GameContext = createContext(null);
 
+function codingXpNeededFor(level){
+  return Math.ceil(CODING_XP_BASE * Math.pow(CODING_XP_GROWTH, level));
+}
+
 function reducer(state, action) {
   // normalize/migrate legacy shapes
   if (!state.upgrades || state.upgrades instanceof Set || Array.isArray(state.upgrades)) {
@@ -268,16 +289,18 @@ function reducer(state, action) {
   if (!('conceptXP' in state)) state = { ...state, conceptXP: 0 };
   if (!('conceptTickets' in state)) state = { ...state, conceptTickets: 0 };
   if (!('conceptShards' in state)) state = { ...state, conceptShards: 0 };
+  if (!('codingXP' in state)) state = { ...state, codingXP: 0 };
+  if (!('codingLevel' in state)) state = { ...state, codingLevel: 0 };
   switch (action.type) {
     case 'TICK': {
       const dt = action.dt;
       const pps = totalParamsPerSec(state);
       const cps = computePerSec(state);
-      // auto clicker from upgrades
+      // auto clicker from upgrades（手動ボーナスは除外）
       let clickAuto = 0;
       {
         const lvl = getUpgradeLevel(state, 'auto_clicker');
-        if (lvl > 0) clickAuto += clickPower(state) * dt * lvl; // lvl clicks/sec
+        if (lvl > 0) clickAuto += coreClickPower(state) * dt * lvl; // lvl clicks/sec
       }
       const paramsGain = pps * dt;
       const computeGain = cps * dt;
@@ -293,7 +316,14 @@ function reducer(state, action) {
     }
     case 'CLICK': {
       const gain = clickPower(state);
-      return { ...state, params: state.params + gain, totalParams: state.totalParams + gain };
+      // Coding XP（手動クリックのみ）
+      let codingXP = (state.codingXP || 0) + CODING_XP_PER_CLICK;
+      let codingLevel = state.codingLevel || 0;
+      while (codingXP >= codingXpNeededFor(codingLevel)) {
+        codingXP -= codingXpNeededFor(codingLevel);
+        codingLevel += 1;
+      }
+      return { ...state, params: state.params + gain, totalParams: state.totalParams + gain, codingXP, codingLevel };
     }
     case 'BUY': {
       const b = BUILDING_MAP[action.id];
@@ -535,6 +565,12 @@ export function GameProvider({ children }) {
       if (!u) return 0;
       return upgradeCost(u, getUpgradeLevel(state, id));
     },
+    codingProgress: () => {
+      const lvl = state.codingLevel || 0;
+      const xp = state.codingXP || 0;
+      const need = codingXpNeededFor(lvl);
+      return { level: lvl, xp, need };
+    },
     claimQuest: (id) => dispatch({ type: 'QUEST_CLAIM', id }),
     startResearchBoost: (cost, durationMs) => dispatch({ type:'RESEARCH_BOOST', cost, durationMs }),
     buyParamUpgrade: (id) => dispatch({ type:'BUY_PARAM_UPGRADE', id }),
@@ -545,6 +581,8 @@ export function GameProvider({ children }) {
     computePerSec: () => computePerSec(state),
     globalAddPct: () => calcGlobalAddPct(state),
     clickPower: () => clickPower(state),
+    coreClickPower: () => coreClickPower(state),
+    clickPowerBreakdown: () => clickPowerBreakdown(state),
     effectiveRateFor: (id) => {
       const b = BUILDING_MAP[id];
       if (!b) return 0;

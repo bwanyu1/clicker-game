@@ -124,7 +124,6 @@ function Layout() {
       <Header />
       <div className="layout">
         <div>
-          <ClickPanel />
           <div className="panel" style={{ marginTop: 16 }}>
             <div className="row">
               <div className="grow">
@@ -153,6 +152,7 @@ function RightTabs(){
   const { state, setRightTab } = useGame();
   const idx = state.ui?.rightTab ?? 0;
   const items = [
+    { label: 'クリック', content: <ClickPanel /> },
     { label: 'ショップ', content: <BuildingsShop /> },
     { label: 'アップグレード', content: <UpgradesShop /> },
     { label: 'チューニング', content: <ParamTuningPanel /> },

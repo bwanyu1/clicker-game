@@ -27,7 +27,7 @@ export const UPGRADES = [
   {
     id: 'clicker_mania',
     name: 'クリックマニア',
-    desc: 'クリック+1（基礎+1→+2）',
+    desc: 'クリック×2（レベルごとに×2）',
     cost: 10,
     costGrowth: 1.5,
     effects: { clickPowerAdd: 1 },
