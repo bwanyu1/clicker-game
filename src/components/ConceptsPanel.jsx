@@ -5,7 +5,7 @@ import PackOpenModal from './PackOpenModal';
 
 export default function ConceptsPanel(){
   const { state, openPack, shardsToTicket } = useGame();
-  const counts = state.conceptCards || {};
+  const counts = React.useMemo(() => state.conceptCards || {}, [state.conceptCards]);
   const have = CONCEPT_CARDS.filter(c => counts[c.id] > 0);
   const notHave = CONCEPT_CARDS.filter(c => !counts[c.id]);
   const xp = state.conceptXP || 0;
@@ -21,7 +21,7 @@ export default function ConceptsPanel(){
       const card = CONCEPT_CARDS.find(c=> c.id === delta);
       setModal(m => ({ ...m, phase:'reveal', reveal: card }));
     }
-  }, [counts, modal.open, modal.phase]);
+  }, [counts, modal.open, modal.phase, modal.snapshot]);
 
   const startOpen = (n) => {
     if (!state.conceptTickets || state.conceptTickets < 1) return;

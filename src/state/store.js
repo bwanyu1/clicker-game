@@ -584,9 +584,6 @@ function conceptProdAddPct(state){
 }
 
 // --- Concept pack gacha helpers ---
-function rarityShard(r){
-  if (r==='L') return 50; if (r==='R') return 25; if (r==='U') return 10; return 5;
-}
 
 function rollConcept(ownedSet){
   // weights by rarity
