@@ -3,7 +3,7 @@ import React from 'react';
 export default function Tabs({ value, onChange, items }){
   const ids = items.map((_,i)=>`tab-${i}`);
   return (
-    <div className="tabs">
+    <div className="tabs responsive">
       <div className="tablist" role="tablist" aria-label="Sections">
         {items.map((it, i) => (
           <button
@@ -26,4 +26,3 @@ export default function Tabs({ value, onChange, items }){
     </div>
   );
 }
-
