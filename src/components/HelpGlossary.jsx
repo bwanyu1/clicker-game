@@ -1,4 +1,5 @@
 import React from 'react';
+import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR } from '../config/balance';
 
 export default function HelpGlossary() {
   return (
@@ -28,8 +29,8 @@ export default function HelpGlossary() {
             <code>×(1 + DataQ × 親和性)</code> で強化。
             <br/>
             トレードオフ: 古典/記号系（大学研究室・パーセプトロン・記号推論）は
-            DataQ上昇に応じて少し効率低下（最低90%までは維持）。
-            さらにデータ駆動系の<b>購入Paramsコスト</b>は DataQ に応じて最大+25%上昇します。
+            DataQ上昇に応じて少し効率低下（最低{Math.round(DATA_Q_OPPOSITION_FLOOR*100)}%を維持）。
+            さらにデータ駆動系の<b>購入Paramsコスト</b>は DataQ に応じて最大+{Math.round(DATA_Q_COST_MULTIPLIER*100)}% 上昇します。
           </dd>
           <dt>Insights</dt>
           <dd>プレステージ（任意リセット）で獲得する恒久通貨。アップグレードや建物別×2などに使用（周回を超えて維持）。</dd>

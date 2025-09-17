@@ -7,6 +7,7 @@ import { UPGRADE_MAP } from '../data/upgrades';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { CONCEPT_CARDS } from '../data/concepts';
 import { QUESTS } from '../data/quests';
+import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR } from '../config/balance';
 
 const initialState = {
   params: 0,
@@ -107,7 +108,7 @@ function effectiveRate(state, b) {
   }
   // Trade-off: classic/symbolic lines lose efficiency as DataQ rises
   if (b.dataQOpposition) {
-    const opp = Math.max(0.1, 1 - dataQ * b.dataQOpposition);
+    const opp = Math.max(DATA_Q_OPPOSITION_FLOOR, 1 - dataQ * b.dataQOpposition);
     rate *= opp;
   }
   rate *= 1 + addPct; // add then apply mult
@@ -160,7 +161,7 @@ function nextCostWithMods(state, b, count) {
   }
   // Trade-off: data-driven lines become costlier as DataQ rises (Paramsのみ)
   if (b.dataQAffinity && cost.params) {
-    const dm = 1 + (state.dataQ || 0) * 0.25; // up to +25%
+    const dm = 1 + (state.dataQ || 0) * DATA_Q_COST_MULTIPLIER;
     cost.params = Math.ceil(cost.params * dm);
   }
   return cost;
