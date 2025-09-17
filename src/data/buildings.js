@@ -27,8 +27,9 @@ export const BUILDINGS = [
     dataQOpposition: 0.35,
     baseCost: { params: 1500 },
     costGrowth: { params: 1.12 },
-    // global +5% if owned
+    // global +5% with diminishing returns per copy (r=0.5, cap ≈+10%)
     globalAddPct: 0.05,
+    globalAddDecay: 0.5,
   },
   {
     id: 'gpu_2009',
@@ -66,7 +67,9 @@ export const BUILDINGS = [
     baseRate: 0, // 生産はしないがDataQに寄与（簡易版: 所持>0で+5%）
     baseCost: { params: 1e7, compute: 500 },
     costGrowth: { params: 1.1, compute: 1.1 },
+    // global +5% with diminishing returns per copy (r=0.6, cap ≈+12.5%)
     globalAddPct: 0.05,
+    globalAddDecay: 0.6,
   },
   {
     id: 'pretrain_cluster_2018',

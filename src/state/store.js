@@ -73,11 +73,19 @@ function initState() {
 }
 
 function calcGlobalAddPct(state) {
-  // Building-defined global additive bonuses (once per ownership)
+  // Building-defined global additive bonuses, with optional diminishing returns
   let add = 0;
   for (const b of BUILDINGS) {
-    if (b.globalAddPct && (state.buildings[b.id]?.count || 0) > 0) {
-      add += b.globalAddPct;
+    const cnt = state.buildings[b.id]?.count || 0;
+    const base = b.globalAddPct || 0;
+    if (!base || cnt <= 0) continue;
+    const r = b.globalAddDecay;
+    if (typeof r === 'number' && r > 0 && r < 1) {
+      // sum of geometric series: base * (1 - r^cnt) / (1 - r)
+      add += base * (1 - Math.pow(r, cnt)) / (1 - r);
+    } else {
+      // default: first copy only
+      add += base;
     }
   }
   // Insights: 深層効率化 +10% per level
@@ -301,7 +309,7 @@ function reducer(state, action) {
     case 'BUY_MANY': {
       const b = BUILDING_MAP[action.id];
       const current = state.buildings[b.id]?.count || 0;
-      const qty = Math.max(1, action.qty | 0);
+      let qty = Math.max(1, action.qty | 0);
       const cost = seriesCost(state, b, current, qty);
       if (!canAfford(state, cost)) return state;
       const afterSpend = spend(state, cost);

@@ -72,6 +72,7 @@ export default function HelpGlossary() {
           <li><b>まとめ買い</b>（x1/x10/x100）を選べる。<b>Bキー</b>で切替、<b>1〜9キー</b>で素早く購入。</li>
           <li>コストは購入ごとに指数成長（表示のタイトルに合計見積りを表示）。</li>
           <li>GPUリグは <b>初回のみCompute不要</b>。2台目以降はParams+Computeが必要。</li>
+          <li><b>全体ボーナス建物</b>: 記号推論班・データレイクは所持数に応じて全体に<b>加算ボーナス</b>。ただし逓減（diminishing returns）あり。</li>
         </ul>
       </Section>
 
