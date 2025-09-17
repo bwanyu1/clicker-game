@@ -21,7 +21,7 @@ import { formatNumber } from './utils/number';
 import React from 'react';
 
 function Header() {
-  const { state, paramsPerSec, computePerSec } = useGame();
+  const { state, paramsPerSec, computePerSec, globalAddPct } = useGame();
   const [story, setStory] = React.useState('');
   const eraNext = nextEraTarget(state);
   const nextIns = nextInsightsTarget(state);
@@ -46,6 +46,7 @@ function Header() {
         <span className="pill">Params: {formatNumber(state.params)} <span className="muted">(+{formatNumber(paramsPerSec())}/s)</span></span>
         <span className="pill">Compute: {formatNumber(state.compute)} <span className="muted">(+{formatNumber(computePerSec())}/s)</span></span>
         <span className="pill">Era: {state.eraId}</span>
+        <span className="pill" title="全建物に加算で適用">Global +{(globalAddPct()*100).toFixed(2)}%</span>
         <span className="pill">Insights: {state.insights}</span>
         <span className="muted small">保存は30秒毎／Space/Enterでクリック</span>
       </div>

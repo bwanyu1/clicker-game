@@ -543,6 +543,7 @@ export function GameProvider({ children }) {
     shardsToTicket: () => dispatch({ type:'SHARDS_TO_TICKET' }),
     paramsPerSec: () => totalParamsPerSec(state),
     computePerSec: () => computePerSec(state),
+    globalAddPct: () => calcGlobalAddPct(state),
     clickPower: () => clickPower(state),
     effectiveRateFor: (id) => {
       const b = BUILDING_MAP[id];

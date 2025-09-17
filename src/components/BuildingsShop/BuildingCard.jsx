@@ -36,7 +36,7 @@ export default function BuildingCard({ id, qty=1 }) {
         <span className="pill small">{formatNumber(cost.params)} Params</span>
         {needsCompute && <span className="pill small">{formatNumber(cost.compute)} Compute</span>}
         {b.globalAddPct ? (
-          <span className="pill small" title={`現在の全体加算: +${(globalAddNow*100).toFixed(2)}%\n次の1台で: +${(globalAddNext*100).toFixed(2)}%`}>Now +{(globalAddNow*100).toFixed(1)}% / Next +{(globalAddNext*100).toFixed(1)}%</span>
+          <span className="pill small" title={`現在の全体加算: +${(globalAddNow*100).toFixed(2)}%\n次の1台で: +${(globalAddNext*100).toFixed(2)}%`}>Now +{(globalAddNow*100).toFixed(2)}% / Next +{(globalAddNext*100).toFixed(2)}%</span>
         ) : null}
         <button className="buyBtn" disabled={!afford} onClick={() => buyBuilding(id)}>x1</button>
         <button className="buyBtn" disabled={!affordSeries} onClick={() => buyMany(id, qty)}>x{qty}</button>
