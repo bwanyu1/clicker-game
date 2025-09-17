@@ -10,6 +10,8 @@ export function saveState(state) {
     copy.achievements = Array.from(copy.achievements || []);
     copy.questsClaimed = Array.from(copy.questsClaimed || []);
     copy.paramUpgrades = copy.paramUpgrades || {};
+    copy.opcodePoints = copy.opcodePoints || 0;
+    copy.clickSkills = copy.clickSkills || {};
     // conceptCards as id->count map
     copy.conceptCards = copy.conceptCards || {};
     copy.conceptXP = copy.conceptXP || 0;
@@ -49,6 +51,8 @@ export function loadState() {
     parsed.achievements = new Set(parsed.achievements || []);
     parsed.questsClaimed = new Set(parsed.questsClaimed || []);
     parsed.paramUpgrades = parsed.paramUpgrades || {};
+    parsed.opcodePoints = parsed.opcodePoints || 0;
+    parsed.clickSkills = parsed.clickSkills || {};
     if (parsed.conceptCards instanceof Array) {
       const obj = {}; for (const id of parsed.conceptCards) obj[id]=(obj[id]||0)+1; parsed.conceptCards = obj;
     }
@@ -88,6 +92,8 @@ export function importSave(raw) {
     parsed.achievements = new Set(parsed.achievements || []);
     parsed.questsClaimed = new Set(parsed.questsClaimed || []);
     parsed.paramUpgrades = parsed.paramUpgrades || {};
+    parsed.opcodePoints = parsed.opcodePoints || 0;
+    parsed.clickSkills = parsed.clickSkills || {};
     // conceptCards: accept array/set/map -> object map id->count
     if (Array.isArray(parsed.conceptCards)) {
       const obj = {}; for (const id of parsed.conceptCards) obj[id]=(obj[id]||0)+1; parsed.conceptCards = obj;

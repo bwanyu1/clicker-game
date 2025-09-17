@@ -7,7 +7,8 @@ import { UPGRADE_MAP } from '../data/upgrades';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { CONCEPT_CARDS } from '../data/concepts';
 import { QUESTS } from '../data/quests';
-import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR, CODING_XP_PER_CLICK, CODING_XP_BASE, CODING_XP_GROWTH, CODING_CLICK_POWER_PER_LEVEL } from '../config/balance';
+import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR, CODING_XP_PER_CLICK, CODING_XP_BASE, CODING_XP_GROWTH, CODING_CLICK_POWER_PER_LEVEL, OPC_POINTS_PER_LEVEL } from '../config/balance';
+import { CLICK_SKILL_MAP } from '../data/click_skills';
 
 const initialState = {
   params: 0,
@@ -31,6 +32,8 @@ const initialState = {
   conceptShards: 0,
   codingXP: 0,
   codingLevel: 0,
+  opcodePoints: 0,
+  clickSkills: {}, // { [skillId]: level }
 };
 
 function initState() {
@@ -162,7 +165,10 @@ function coreClickPower(state) {
 function clickPower(state) {
   // 手動クリック用: (基礎 + カード + CLv加算) × 2^Lv(clicker_mania)
   const br = clickPowerBreakdown(state);
-  return br.total;
+  // skill: micro_ops adds multiplicative manual multiplier
+  const sLvl = getSkillLevel(state, 'micro_ops');
+  const mult = sLvl > 0 ? Math.pow(CLICK_SKILL_MAP['micro_ops'].effects.manualMultPerLevel || 1, sLvl) : 1;
+  return br.total * mult;
 }
 
 function clickPowerBreakdown(state){
@@ -291,6 +297,8 @@ function reducer(state, action) {
   if (!('conceptShards' in state)) state = { ...state, conceptShards: 0 };
   if (!('codingXP' in state)) state = { ...state, codingXP: 0 };
   if (!('codingLevel' in state)) state = { ...state, codingLevel: 0 };
+  if (!('opcodePoints' in state)) state = { ...state, opcodePoints: 0 };
+  if (!('clickSkills' in state)) state = { ...state, clickSkills: {} };
   switch (action.type) {
     case 'TICK': {
       const dt = action.dt;
@@ -301,6 +309,9 @@ function reducer(state, action) {
       {
         const lvl = getUpgradeLevel(state, 'auto_clicker');
         if (lvl > 0) clickAuto += coreClickPower(state) * dt * lvl; // lvl clicks/sec
+        // skill: thread_booster adds extra auto clicks per sec
+        const sLvl = getSkillLevel(state, 'thread_booster');
+        if (sLvl > 0) clickAuto += coreClickPower(state) * dt * (0.2 * sLvl);
       }
       const paramsGain = pps * dt;
       const computeGain = cps * dt;
@@ -317,13 +328,16 @@ function reducer(state, action) {
     case 'CLICK': {
       const gain = clickPower(state);
       // Coding XP（手動クリックのみ）
-      let codingXP = (state.codingXP || 0) + CODING_XP_PER_CLICK;
+      const cxpBonus = getSkillLevel(state, 'cache_prefetch') * (CLICK_SKILL_MAP['cache_prefetch'].effects.cxpAddPerClick || 0);
+      let codingXP = (state.codingXP || 0) + CODING_XP_PER_CLICK + cxpBonus;
       let codingLevel = state.codingLevel || 0;
+      let opcodePoints = state.opcodePoints || 0;
       while (codingXP >= codingXpNeededFor(codingLevel)) {
         codingXP -= codingXpNeededFor(codingLevel);
         codingLevel += 1;
+        opcodePoints += OPC_POINTS_PER_LEVEL;
       }
-      return { ...state, params: state.params + gain, totalParams: state.totalParams + gain, codingXP, codingLevel };
+      return { ...state, params: state.params + gain, totalParams: state.totalParams + gain, codingXP, codingLevel, opcodePoints };
     }
     case 'BUY': {
       const b = BUILDING_MAP[action.id];
@@ -387,6 +401,15 @@ function reducer(state, action) {
       if (state.insights < cost) return state;
       const next = { ...state.upgrades, [u.id]: level + 1 };
       return { ...state, insights: state.insights - cost, upgrades: next };
+    }
+    case 'BUY_CLICK_SKILL': {
+      const s = CLICK_SKILL_MAP[action.id];
+      if (!s) return state;
+      const level = getSkillLevel(state, s.id);
+      const cost = clickSkillCost(s, level);
+      if ((state.opcodePoints || 0) < cost) return state;
+      const next = { ...(state.clickSkills||{}), [s.id]: level + 1 };
+      return { ...state, clickSkills: next, opcodePoints: (state.opcodePoints||0) - cost };
     }
     case 'DO_PRESTIGE': {
       const gain = calcPrestigeGain(state) + (state.insights === 0 ? 10 : 0);
@@ -564,6 +587,13 @@ export function GameProvider({ children }) {
       const u = UPGRADE_MAP[id];
       if (!u) return 0;
       return upgradeCost(u, getUpgradeLevel(state, id));
+    },
+    buyClickSkill: (id) => dispatch({ type:'BUY_CLICK_SKILL', id }),
+    getClickSkillLevel: (id) => getSkillLevel(state, id),
+    clickSkillNextCost: (id) => {
+      const s = CLICK_SKILL_MAP[id];
+      if (!s) return 0;
+      return clickSkillCost(s, getSkillLevel(state, id));
     },
     codingProgress: () => {
       const lvl = state.codingLevel || 0;
@@ -743,6 +773,17 @@ function upgradeCost(upg, level){
   const base = upg.cost || 0;
   const growth = upg.costGrowth || 1.6;
   return Math.ceil(base * Math.pow(growth, level));
+}
+
+// Click skills helpers
+function getSkillLevel(state, id){
+  return (state.clickSkills && state.clickSkills[id]) || 0;
+}
+
+function clickSkillCost(skill, level){
+  const base = skill.cost || 1;
+  const g = skill.costGrowth || 1.5;
+  return Math.ceil(base * Math.pow(g, level));
 }
 
 function conceptClickAdd(state){

@@ -7,3 +7,4 @@ export const CODING_XP_PER_CLICK = 1; // 手動クリック1回あたり獲得CX
 export const CODING_XP_BASE = 50;     // Lv0→1に必要なCXP基礎
 export const CODING_XP_GROWTH = 1.5;  // レベル毎の必要CXP倍率
 export const CODING_CLICK_POWER_PER_LEVEL = 0.5; // CLv1あたりのクリック加算
+export const OPC_POINTS_PER_LEVEL = 1; // CLv上昇ごとに得るOpcodeポイント

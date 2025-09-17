@@ -3,7 +3,7 @@ import { UPGRADES } from '../data/upgrades';
 import { useGame } from '../state/store';
 
 export default function UpgradesShop() {
-  const { state, buyUpgrade, upgradeNextCost, getUpgradeLevel, clickPowerBreakdown } = useGame();
+  const { state, buyUpgrade, upgradeNextCost, getUpgradeLevel, clickPowerBreakdown, getClickSkillLevel } = useGame();
   return (
     <div className="panel">
       <h2>Insights アップグレード</h2>
@@ -15,10 +15,13 @@ export default function UpgradesShop() {
             {u.id === 'clicker_mania' && (() => {
               const br = clickPowerBreakdown();
               const lvl = getUpgradeLevel(u.id) || 0;
-              const nextTotal = (br.sum) * Math.pow(2, lvl + 1);
+              const microLvl = getClickSkillLevel('micro_ops') || 0;
+              const microMult = Math.pow(1.10, microLvl);
+              const cur = br.total * microMult;
+              const next = (br.sum) * Math.pow(2, lvl + 1) * microMult;
               return (
                 <span className="small muted">
-                  現在の1クリック: {Math.floor(br.total)} → 購入後: {Math.floor(nextTotal)}
+                  現在の1クリック: {Math.floor(cur)} → 購入後: {Math.floor(next)}
                 </span>
               );
             })()}
