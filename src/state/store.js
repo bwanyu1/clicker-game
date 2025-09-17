@@ -7,6 +7,7 @@ import { UPGRADE_MAP } from '../data/upgrades';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { CONCEPT_CARDS } from '../data/concepts';
 import { QUESTS } from '../data/quests';
+import { ARTIFACTS, ARTIFACT_MAP, ARTIFACT_SLOTS, ARTIFACT_RARITIES, ARTIFACT_ADD_SCALE, ARTIFACT_MULT_GT1_SCALE, ARTIFACT_MULT_LT1_SCALE } from '../data/artifacts';
 import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR, CODING_XP_PER_CLICK, CODING_XP_BASE, CODING_XP_GROWTH, CODING_CLICK_POWER_PER_LEVEL, OPC_POINTS_PER_LEVEL } from '../config/balance';
 import { CLICK_SKILL_MAP } from '../data/click_skills';
 
@@ -34,6 +35,8 @@ const initialState = {
   codingLevel: 0,
   opcodePoints: 0,
   clickSkills: {}, // { [skillId]: level }
+  artifacts: {}, // { [artifactKey]: count } where artifactKey = `${id}@${rar}`
+  equippedArtifacts: {}, // { [slot]: artifactKey }
 };
 
 function initState() {
@@ -100,6 +103,8 @@ function calcGlobalAddPct(state) {
   }
   // 概念カード: 加算ボーナス
   add += conceptProdAddPct(state);
+  // アーティファクト: 加算ボーナス
+  add += artifactProdAddPct(state);
   // 論文採択イベント: 全体×3 は乗算扱いにし、別でmultに反映するためここでは加算しない
   return add;
 }
@@ -118,6 +123,8 @@ function calcSynergyMult(state, b) {
   if (hasFocusX2(state, b.id)) mult *= 2;
   // 恒久アップグレード: building-specific multipliers
   mult *= buildingPermanentMult(state, b.id);
+  // アーティファクト: building-specific multipliers
+  mult *= artifactBuildingMult(state, b.id);
   return mult;
 }
 
@@ -142,6 +149,7 @@ function effectiveRate(state, b) {
   if (hasEvent(state, 'research_boost')) rate *= 1.25;
   if (hasEvent(state, 'quest_boost')) rate *= 1.2;
   rate *= conceptRateMult(state);
+  rate *= artifactRateMult(state);
   rate *= calcSynergyMult(state, b);
   return rate;
 }
@@ -160,6 +168,8 @@ function computePerSec(state) {
       sum *= Math.pow(mult, lvl);
     }
   }
+  // アーティファクト: Compute産出×
+  sum *= artifactComputeRateMult(state);
   return sum;
 }
 
@@ -184,7 +194,8 @@ function clickPowerBreakdown(state){
   const base = 1;
   const cards = conceptClickAdd(state);
   const coding = (state.codingLevel || 0) * CODING_CLICK_POWER_PER_LEVEL;
-  const sum = base + cards + coding;
+  const arti = artifactClickAdd(state);
+  const sum = base + cards + coding + arti;
   const maniaLvl = getUpgradeLevel(state, 'clicker_mania');
   const maniaMult = maniaLvl > 0 ? Math.pow(2, maniaLvl) : 1;
   const total = sum * maniaMult;
@@ -206,11 +217,14 @@ function nextCostWithMods(state, b, count) {
     const lvl = getUpgradeLevel(state, 'industrial_lessons');
     const mult = lvl > 0 ? Math.pow(0.85, lvl) : 1;
     cost.compute = Math.ceil(cost.compute * mult);
+    // アーティファクト: Computeコスト乗算
+    cost.compute = Math.ceil(cost.compute * artifactComputeCostMult(state));
   }
   // 概念カード: Paramsコスト減
   if (cost.params) {
     const m = conceptParamsCostMult(state);
-    cost.params = Math.ceil(cost.params * m);
+    const ma = artifactParamsCostMult(state);
+    cost.params = Math.ceil(cost.params * m * ma);
   }
   // イベント: GPU大量調達 → GPUリグのParams/Computeコスト−25%
   if (b.id === 'gpu_2009' && hasEvent(state, 'gpu_sale')) {
@@ -297,6 +311,28 @@ function reducer(state, action) {
   if (!state.questsClaimed) state = { ...state, questsClaimed: new Set() };
   if (!state.activeEvents) state = { ...state, activeEvents: [] };
   if (!state.paramUpgrades) state = { ...state, paramUpgrades: {} };
+  if (!('artifacts' in state)) state = { ...state, artifacts: {} };
+  if (!('equippedArtifacts' in state)) state = { ...state, equippedArtifacts: {} };
+  // migrate artifact keys: plain id -> id@C, equipped plain -> @C
+  if (state.artifacts && typeof state.artifacts === 'object') {
+    const next = {};
+    for (const k of Object.keys(state.artifacts)) {
+      const v = state.artifacts[k] | 0;
+      if (!v) continue;
+      const key = (k.includes('@') ? k : `${k}@C`);
+      next[key] = (next[key]||0) + v;
+    }
+    state = { ...state, artifacts: next };
+  }
+  if (state.equippedArtifacts && typeof state.equippedArtifacts === 'object') {
+    const eq = {};
+    for (const slot in state.equippedArtifacts) {
+      const id = state.equippedArtifacts[slot];
+      if (!id) continue;
+      eq[slot] = id.includes('@') ? id : `${id}@C`;
+    }
+    state = { ...state, equippedArtifacts: eq };
+  }
   if (state.conceptCards && Array.isArray(state.conceptCards)) {
     const obj = {}; for (const id of state.conceptCards) obj[id]=(obj[id]||0)+1; state = { ...state, conceptCards: obj };
   }
@@ -441,6 +477,9 @@ function reducer(state, action) {
         // 概念カードは永続（思考の蓄積）
         conceptCards: Array.isArray(state.conceptCards) || state.conceptCards instanceof Set ? state.conceptCards : { ...state.conceptCards },
         conceptXP: state.conceptXP,
+        // アーティファクトは永続
+        artifacts: { ...(state.artifacts || {}) },
+        equippedArtifacts: { ...(state.equippedArtifacts || {}) },
       };
     }
     case 'ACH_UNLOCK': {
@@ -505,6 +544,52 @@ function reducer(state, action) {
     case 'SHARDS_TO_TICKET': {
       if ((state.conceptShards||0) < 100) return state;
       return { ...state, conceptShards: state.conceptShards - 100, conceptTickets: (state.conceptTickets||0) + 1 };
+    }
+    case 'ARTI_DISCOVER': {
+      const cost = action.cost || 1e6;
+      if ((state.params || 0) < cost) return state;
+      const art = randomArtifact();
+      const key = artiKey(art.id, 'C');
+      const inv = { ...(state.artifacts || {}) };
+      inv[key] = (inv[key] || 0) + 1;
+      const note = `${art.name} [C] を発見！`;
+      return { ...state, params: state.params - cost, totalParams: state.totalParams - cost, artifacts: inv, activeEvents: [...state.activeEvents, { id:`arti-${Date.now()}`, type:'concept_award', note, endsAt: Date.now() + 6000 }] };
+    }
+    case 'ARTI_EQUIP': {
+      const key = action.key; const { id } = parseArtiKey(key);
+      const a = ARTIFACT_MAP[id]; if (!a) return state;
+      const have = (state.artifacts?.[key] || 0);
+      if (have <= 0) return state;
+      const slot = a.slot;
+      const equipped = { ...(state.equippedArtifacts || {}) };
+      const inv = { ...(state.artifacts || {}) };
+      const prev = equipped[slot];
+      equipped[slot] = key;
+      inv[key] = Math.max(0, (inv[key]||0) - 1);
+      if (prev) inv[prev] = (inv[prev] || 0) + 1;
+      return { ...state, equippedArtifacts: equipped, artifacts: inv };
+    }
+    case 'ARTI_UNEQUIP': {
+      const slot = action.slot; if (!slot) return state;
+      const equipped = { ...(state.equippedArtifacts || {}) };
+      const key = equipped[slot]; if (!key) return state;
+      const inv = { ...(state.artifacts || {}) };
+      inv[key] = (inv[key] || 0) + 1;
+      delete equipped[slot];
+      return { ...state, equippedArtifacts: equipped, artifacts: inv };
+    }
+    case 'ARTI_COMBINE': {
+      const key = action.key;
+      const { id, rar } = parseArtiKey(key);
+      const idx = ARTIFACT_RARITIES.indexOf(rar);
+      if (idx < 0 || idx >= ARTIFACT_RARITIES.length - 1) return state;
+      const have = (state.artifacts?.[key] || 0);
+      if (have < 3) return state;
+      const nextKey = artiKey(id, ARTIFACT_RARITIES[idx+1]);
+      const inv = { ...(state.artifacts || {}) };
+      inv[key] = have - 3;
+      inv[nextKey] = (inv[nextKey] || 0) + 1;
+      return { ...state, artifacts: inv };
     }
     default:
       return state;
@@ -625,6 +710,10 @@ export function GameProvider({ children }) {
     startFocusX2: (buildingId, cost, durationMs) => dispatch({ type:'FOCUS_X2', buildingId, cost, durationMs }),
     openPack: () => dispatch({ type:'OPEN_PACK' }),
     shardsToTicket: () => dispatch({ type:'SHARDS_TO_TICKET' }),
+    artiDiscover: (cost) => dispatch({ type:'ARTI_DISCOVER', cost }),
+    artiEquip: (key) => dispatch({ type:'ARTI_EQUIP', key }),
+    artiUnequip: (slot) => dispatch({ type:'ARTI_UNEQUIP', slot }),
+    artiCombine: (key) => dispatch({ type:'ARTI_COMBINE', key }),
     paramsPerSec: () => totalParamsPerSec(state),
     computePerSec: () => computePerSec(state),
     globalAddPct: () => calcGlobalAddPct(state),
@@ -697,6 +786,7 @@ function rollEvent(dispatch, state) {
     if (lvl > 0) p *= Math.pow(1.5, lvl);
   }
   p *= conceptEventRateMult(state);
+  p *= artifactEventRateMult(state);
   if (Math.random() < p) {
     // pick event by weights
     const pick = randomChoice([
@@ -780,6 +870,86 @@ function conceptEventRateMult(state){
     if (c?.effects?.eventRateMult) m *= Math.pow(c.effects.eventRateMult, cnt);
   }
   return m;
+}
+
+// --- Artifacts aggregation ---
+function equippedArtifactList(state){
+  const eq = state.equippedArtifacts || {};
+  const list = [];
+  for (const slot of ARTIFACT_SLOTS) {
+    const key = eq[slot];
+    if (!key) continue;
+    const parsed = parseArtiKey(key);
+    const base = ARTIFACT_MAP[parsed.id];
+    if (base) list.push({ base, rar: parsed.rar, key });
+  }
+  return list;
+}
+
+function scaledEffects(base, rar){
+  const eff = base.effects || {};
+  const multGt1 = (v)=> 1 + (v - 1) * (ARTIFACT_MULT_GT1_SCALE[rar] || 1);
+  const multLt1 = (v)=> 1 - (1 - v) * (ARTIFACT_MULT_LT1_SCALE[rar] || 1);
+  const add = (v)=> v * (ARTIFACT_ADD_SCALE[rar] || 1);
+  const out = {};
+  if (eff.rateMult) out.rateMult = multGt1(eff.rateMult);
+  if (eff.computeRateMult) out.computeRateMult = multGt1(eff.computeRateMult);
+  if (eff.paramsCostMult) out.paramsCostMult = multLt1(eff.paramsCostMult);
+  if (eff.computeCostMult) out.computeCostMult = multLt1(eff.computeCostMult);
+  if (eff.prodAddPct) out.prodAddPct = add(eff.prodAddPct);
+  if (eff.clickPowerAdd) out.clickPowerAdd = add(eff.clickPowerAdd);
+  if (eff.eventRateMult) out.eventRateMult = multGt1(eff.eventRateMult);
+  if (eff.buildingMult) {
+    out.buildingMult = {};
+    for (const bid in eff.buildingMult) out.buildingMult[bid] = multGt1(eff.buildingMult[bid]);
+  }
+  return out;
+}
+
+function artifactProdAddPct(state){
+  return equippedArtifactList(state).reduce((a, x) => a + (scaledEffects(x.base, x.rar).prodAddPct || 0), 0);
+}
+
+function artifactRateMult(state){
+  return equippedArtifactList(state).reduce((m, x) => m * (scaledEffects(x.base, x.rar).rateMult || 1), 1);
+}
+
+function artifactParamsCostMult(state){
+  return equippedArtifactList(state).reduce((m, x) => m * (scaledEffects(x.base, x.rar).paramsCostMult || 1), 1);
+}
+
+function artifactComputeRateMult(state){
+  return equippedArtifactList(state).reduce((m, x) => m * (scaledEffects(x.base, x.rar).computeRateMult || 1), 1);
+}
+
+function artifactComputeCostMult(state){
+  return equippedArtifactList(state).reduce((m, x) => m * (scaledEffects(x.base, x.rar).computeCostMult || 1), 1);
+}
+
+function artifactEventRateMult(state){
+  return equippedArtifactList(state).reduce((m, x) => m * (scaledEffects(x.base, x.rar).eventRateMult || 1), 1);
+}
+
+function artifactClickAdd(state){
+  return equippedArtifactList(state).reduce((a, x) => a + (scaledEffects(x.base, x.rar).clickPowerAdd || 0), 0);
+}
+
+function artifactBuildingMult(state, buildingId){
+  return equippedArtifactList(state).reduce((m, x) => {
+    const eff = scaledEffects(x.base, x.rar).buildingMult || {};
+    const v = eff[buildingId];
+    return m * (v || 1);
+  }, 1);
+}
+
+function artiKey(id, rar){ return `${id}@${rar}`; }
+function parseArtiKey(key){ const [id, rar] = String(key).split('@'); return { id, rar: rar||'C' }; }
+
+function randomArtifact(){
+  const total = ARTIFACTS.reduce((s,a)=> s + (a.weight||1), 0);
+  let r = Math.random() * total;
+  for (const a of ARTIFACTS){ r -= (a.weight||1); if (r <= 0) return a; }
+  return ARTIFACTS[0];
 }
 
 // ------- Upgrades helpers (multi-level) -------

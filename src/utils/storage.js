@@ -12,6 +12,9 @@ export function saveState(state) {
     copy.paramUpgrades = copy.paramUpgrades || {};
     copy.opcodePoints = copy.opcodePoints || 0;
     copy.clickSkills = copy.clickSkills || {};
+    // artifacts
+    copy.artifacts = copy.artifacts || {};
+    copy.equippedArtifacts = copy.equippedArtifacts || {};
     // conceptCards as id->count map
     copy.conceptCards = copy.conceptCards || {};
     copy.conceptXP = copy.conceptXP || 0;
@@ -53,6 +56,8 @@ export function loadState() {
     parsed.paramUpgrades = parsed.paramUpgrades || {};
     parsed.opcodePoints = parsed.opcodePoints || 0;
     parsed.clickSkills = parsed.clickSkills || {};
+    parsed.artifacts = parsed.artifacts || {};
+    parsed.equippedArtifacts = parsed.equippedArtifacts || {};
     if (parsed.conceptCards instanceof Array) {
       const obj = {}; for (const id of parsed.conceptCards) obj[id]=(obj[id]||0)+1; parsed.conceptCards = obj;
     }
