@@ -98,7 +98,13 @@ function effectiveRate(state, b) {
   const addPct = calcGlobalAddPct(state); // additive
   const dataQ = state.dataQ || 0;
   let rate = base;
-  if (b.rateFormula === 'base*(1+dataQ)') rate = base * (1 + dataQ);
+  // DataQ effect across buildings via dataQAffinity (0..1 typical)
+  if (b.dataQAffinity) {
+    rate *= 1 + dataQ * b.dataQAffinity;
+  } else if (b.rateFormula === 'base*(1+dataQ)') {
+    // backward compatibility if any leftover definitions exist
+    rate = base * (1 + dataQ);
+  }
   rate *= 1 + addPct; // add then apply mult
   if (hasEvent(state, 'research_boost')) rate *= 1.25;
   if (hasEvent(state, 'quest_boost')) rate *= 1.2;
