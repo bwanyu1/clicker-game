@@ -36,7 +36,7 @@ export const BUILDINGS = [
     name: 'GPUリグ',
     era: '2006',
     baseRate: 250,
-    produces: { compute: 0.2 },
+    produces: { compute: 0.35 },
     baseCost: { params: 5e4, compute: 10 },
     costGrowth: { params: 1.12, compute: 1.12 },
   },
@@ -46,6 +46,8 @@ export const BUILDINGS = [
     era: '2012',
     baseRate: 2500,
     dataQAffinity: 1.0,
+    // 小規模な演算資源も併設
+    produces: { compute: 0.05 },
     baseCost: { params: 5e5, compute: 50 },
     costGrowth: { params: 1.08, compute: 1.08 },
     synergy: { with: 'gpu_2009', mult: 1.3 },
@@ -56,6 +58,8 @@ export const BUILDINGS = [
     era: '2017',
     baseRate: 12000,
     dataQAffinity: 0.7,
+    // 研究用のGPUノード群
+    produces: { compute: 0.15 },
     baseCost: { params: 2e6, compute: 120 },
     costGrowth: { params: 1.08, compute: 1.08 },
     synergy: { with: 'gpu_2009', mult: 1.25 },
@@ -77,8 +81,10 @@ export const BUILDINGS = [
     era: '2018',
     baseRate: 80000,
     dataQAffinity: 0.6,
+    // 大型クラスターはComputeも多く供給
+    produces: { compute: 1.2 },
     baseCost: { params: 5e7, compute: 2000 },
-    costGrowth: { params: 1.08, compute: 1.08 },
+    costGrowth: { params: 1.08, compute: 1.06 },
     synergy: { with: 'datalake_2018', mult: 1.3 },
   },
   {
@@ -87,8 +93,10 @@ export const BUILDINGS = [
     era: '2021',
     baseRate: 300000,
     dataQAffinity: 0.4,
+    // 推論最適化インフラの一部を研究へ転用
+    produces: { compute: 3.0 },
     baseCost: { params: 2e8, compute: 5000 },
-    costGrowth: { params: 1.07, compute: 1.07 },
+    costGrowth: { params: 1.07, compute: 1.05 },
     synergy: { with: 'transformer_2017', mult: 1.2 },
   },
 ];

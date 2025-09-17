@@ -25,6 +25,14 @@ export const UPGRADES = [
     effects: { computeCostMult: 0.85 },
   },
   {
+    id: 'cloud_optimization',
+    name: 'クラウド最適化',
+    desc: '全Compute産出 ×1.5（レベルごと）',
+    cost: 30,
+    costGrowth: 1.6,
+    effects: { computeRateMult: 1.5 },
+  },
+  {
     id: 'grant_network',
     name: 'Grant Network',
     desc: 'レアイベント発生率 +50%',

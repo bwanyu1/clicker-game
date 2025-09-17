@@ -151,7 +151,16 @@ function totalParamsPerSec(state) {
 }
 
 function computePerSec(state) {
-  return BUILDINGS.reduce((sum, b) => sum + (state.buildings[b.id]?.count || 0) * (b.produces?.compute || 0), 0);
+  let sum = BUILDINGS.reduce((s, b) => s + (state.buildings[b.id]?.count || 0) * (b.produces?.compute || 0), 0);
+  // Insights: クラウド最適化（Compute産出×）
+  {
+    const lvl = getUpgradeLevel(state, 'cloud_optimization');
+    if (lvl > 0) {
+      const mult = (UPGRADE_MAP['cloud_optimization']?.effects?.computeRateMult) || 1.5;
+      sum *= Math.pow(mult, lvl);
+    }
+  }
+  return sum;
 }
 
 function coreClickPower(state) {
