@@ -5,6 +5,7 @@ export const UPGRADES = [
     name: '深層効率化',
     desc: '全自動生成 +10%（加算）',
     cost: 20,
+    costGrowth: 1.6,
     effects: { prodAddPct: 0.10 },
   },
   {
@@ -12,6 +13,7 @@ export const UPGRADES = [
     name: '産業化の教訓',
     desc: '全Computeコスト −15%（乗算）',
     cost: 30,
+    costGrowth: 1.6,
     effects: { computeCostMult: 0.85 },
   },
   {
@@ -19,6 +21,7 @@ export const UPGRADES = [
     name: 'Grant Network',
     desc: 'レアイベント発生率 +50%',
     cost: 25,
+    costGrowth: 1.5,
     effects: { eventRateMult: 1.5 },
   },
   {
@@ -26,6 +29,7 @@ export const UPGRADES = [
     name: 'クリックマニア',
     desc: 'クリック+1（基礎+1→+2）',
     cost: 10,
+    costGrowth: 1.5,
     effects: { clickPowerAdd: 1 },
   },
   {
@@ -33,6 +37,7 @@ export const UPGRADES = [
     name: '自動クリック',
     desc: '毎秒1回の自動クリック（恒久）',
     cost: 40,
+    costGrowth: 1.6,
     effects: { autoClickPerSec: 1 },
   },
   // Building-specific permanent multipliers (x2)
@@ -41,6 +46,7 @@ export const UPGRADES = [
     name: '研究室ブースト×2',
     desc: '大学研究室の生産×2（恒久）',
     cost: 12,
+    costGrowth: 1.8,
     effects: { buildingMult: { lab_1956: 2.0 } },
   },
   {
@@ -48,6 +54,7 @@ export const UPGRADES = [
     name: 'パーセプトロン×2',
     desc: 'パーセプトロン装置の生産×2（恒久）',
     cost: 18,
+    costGrowth: 1.8,
     effects: { buildingMult: { perceptron_1958: 2.0 } },
   },
   {
@@ -55,6 +62,7 @@ export const UPGRADES = [
     name: 'GPUリグ×2',
     desc: 'GPUリグの生産×2（恒久）',
     cost: 50,
+    costGrowth: 1.8,
     effects: { buildingMult: { gpu_2009: 2.0 } },
   },
   {
@@ -62,6 +70,7 @@ export const UPGRADES = [
     name: 'ConvNet工場×2',
     desc: 'ConvNet工場の生産×2（恒久）',
     cost: 90,
+    costGrowth: 1.8,
     effects: { buildingMult: { convnet_2012: 2.0 } },
   },
   {
@@ -69,6 +78,7 @@ export const UPGRADES = [
     name: 'Transformer研究棟×2',
     desc: 'Transformer研究棟の生産×2（恒久）',
     cost: 140,
+    costGrowth: 1.8,
     effects: { buildingMult: { transformer_2017: 2.0 } },
   },
 ];
