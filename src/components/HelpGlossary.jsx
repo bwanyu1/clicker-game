@@ -1,5 +1,6 @@
 import React from 'react';
 import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR } from '../config/balance';
+import { BUILDINGS } from '../data/buildings';
 
 export default function HelpGlossary() {
   return (
@@ -15,7 +16,7 @@ export default function HelpGlossary() {
         </ul>
       </Section>
 
-      <Section title="リソース">
+  <Section title="リソース">
         <dl className="glossary">
           <dt>Params</dt>
           <dd>主要通貨。クリックと自動生成で増える。建物や強化の購入に使用。</dd>
@@ -35,6 +36,34 @@ export default function HelpGlossary() {
           <dt>Insights</dt>
           <dd>プレステージ（任意リセット）で獲得する恒久通貨。アップグレードや建物別×2などに使用（周回を超えて維持）。</dd>
         </dl>
+      </Section>
+
+      <Section title="DataQの詳細">
+        <ul>
+          <li>
+            強化される建物（親和性）:
+            {' '}
+            {BUILDINGS.filter(b => b.dataQAffinity)
+              .map(b => `${b.name} (+${Math.round((b.dataQAffinity||0)*100)}%)`)
+              .join('、 ')}
+          </li>
+          <li>
+            減衰のある建物（古典/記号系）: {' '}
+            {BUILDINGS.filter(b => b.dataQOpposition)
+              .map(b => b.name)
+              .join('、 ')}
+            （最大 -{Math.round((1-DATA_Q_OPPOSITION_FLOOR)*100)}%）
+          </li>
+          <li>
+            購入コスト: データ駆動系の <b>Params</b> コストは
+            DataQに応じて最大 +{Math.round(DATA_Q_COST_MULTIPLIER*100)}% 上昇
+            （Computeは変化なし）。
+          </li>
+          <li>
+            数式: データ系は <code>rate = base × (1 + DataQ × 親和性)</code>、
+            古典系は <code>rate = base × max({DATA_Q_OPPOSITION_FLOOR}, 1 − DataQ × 係数)</code>。
+          </li>
+        </ul>
       </Section>
 
       <Section title="建物・購入">
