@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Clicker Game App Icon">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#g)"/>
+
+  <!-- AI node network -->
+  <g fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+    <!-- central brain-like curve -->
+    <path d="M176 224c0-44 36-80 80-80s80 36 80 80-36 80-80 80-80-36-80-80z" opacity=".5"/>
+    <!-- connections -->
+    <path d="M128 176L200 208M128 336l72-32M384 176l-72 32M384 336l-72-32M256 144v48M256 320v48" opacity=".9"/>
+    <!-- nodes -->
+    <g fill="#fff" stroke="none">
+      <circle cx="128" cy="176" r="12"/>
+      <circle cx="128" cy="336" r="12"/>
+      <circle cx="384" cy="176" r="12"/>
+      <circle cx="384" cy="336" r="12"/>
+      <circle cx="256" cy="144" r="10"/>
+      <circle cx="256" cy="368" r="10"/>
+      <circle cx="200" cy="208" r="9"/>
+      <circle cx="328" cy="208" r="9"/>
+      <circle cx="200" cy="304" r="9"/>
+      <circle cx="328" cy="304" r="9"/>
+    </g>
+  </g>
+
+  <!-- subtle inner border -->
+  <rect x="42" y="42" width="428" height="428" rx="86" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="4"/>
+</svg>
+
