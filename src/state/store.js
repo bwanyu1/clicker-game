@@ -329,7 +329,16 @@ function reducer(state, action) {
       const gain = clickPower(state);
       // Coding XP（手動クリックのみ）
       const cxpBonus = getSkillLevel(state, 'cache_prefetch') * (CLICK_SKILL_MAP['cache_prefetch'].effects.cxpAddPerClick || 0);
-      let codingXP = (state.codingXP || 0) + CODING_XP_PER_CLICK + cxpBonus;
+      let cxpGain = CODING_XP_PER_CLICK + cxpBonus;
+      // Insights: CXP研修プログラム（乗算）
+      {
+        const lvl = getUpgradeLevel(state, 'cxp_curriculum');
+        if (lvl > 0) {
+          const mult = (UPGRADE_MAP['cxp_curriculum']?.effects?.cxpMult) || 1.25;
+          cxpGain *= Math.pow(mult, lvl);
+        }
+      }
+      let codingXP = (state.codingXP || 0) + cxpGain;
       let codingLevel = state.codingLevel || 0;
       let opcodePoints = state.opcodePoints || 0;
       while (codingXP >= codingXpNeededFor(codingLevel)) {

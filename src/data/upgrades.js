@@ -9,6 +9,14 @@ export const UPGRADES = [
     effects: { prodAddPct: 0.10 },
   },
   {
+    id: 'cxp_curriculum',
+    name: 'CXP研修プログラム',
+    desc: 'CXP獲得量 ×1.25（レベルごと）',
+    cost: 20,
+    costGrowth: 1.6,
+    effects: { cxpMult: 1.25 },
+  },
+  {
     id: 'industrial_lessons',
     name: '産業化の教訓',
     desc: '全Computeコスト −15%（乗算）',
