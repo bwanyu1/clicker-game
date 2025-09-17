@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGame } from '../state/store';
-import { ARTIFACTS, ARTIFACT_SLOTS, ARTIFACT_MAP, ARTIFACT_RARITIES, ARTIFACT_RARITY_LABEL } from '../data/artifacts';
+import { ARTIFACT_SLOTS, ARTIFACT_MAP } from '../data/artifacts';
 
 const DISCOVER_COST = 1e6; // Params cost per discover
 
