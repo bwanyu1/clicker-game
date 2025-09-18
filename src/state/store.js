@@ -363,13 +363,28 @@ function reducer(state, action) {
       const computeGain = cps * dt;
       const params = state.params + paramsGain + clickAuto;
       const totalParams = state.totalParams + paramsGain + clickAuto;
+      // Auto-clicks also grant Coding XP (including Thread Booster contribution)
+      let codingXP = state.codingXP || 0;
+      let codingLevel = state.codingLevel || 0;
+      let opcodePoints = state.opcodePoints || 0;
+      const cpp = Math.max(1e-9, coreClickPower(state));
+      const autoClicks = clickAuto / cpp; // number of implicit clicks this tick
+      if (autoClicks > 0) {
+        const cxpPerClick = CODING_XP_PER_CLICK * cxpUpgradeMult(state);
+        codingXP += autoClicks * cxpPerClick;
+        while (codingXP >= codingXpNeededFor(codingLevel)) {
+          codingXP -= codingXpNeededFor(codingLevel);
+          codingLevel += 1;
+          opcodePoints += OPC_POINTS_PER_LEVEL;
+        }
+      }
       // Era progress
       let eraId = state.eraId;
       const nxt = nextEra(eraId);
       if (nxt && totalParams >= nxt.threshold) {
         eraId = nxt.id;
       }
-      return { ...state, params, totalParams, compute: state.compute + computeGain, eraId, __ppsCache: pps };
+      return { ...state, params, totalParams, compute: state.compute + computeGain, eraId, __ppsCache: pps, codingXP, codingLevel, opcodePoints };
     }
     case 'CLICK': {
       const gain = clickPower(state);
@@ -1004,6 +1019,15 @@ function conceptClickAdd(state){
     if (c?.effects?.clickPowerAdd) add += c.effects.clickPowerAdd * cnt;
   }
   return add;
+}
+
+function cxpUpgradeMult(state){
+  const lvl = getUpgradeLevel(state, 'cxp_curriculum');
+  if (lvl > 0) {
+    const mult = (UPGRADE_MAP['cxp_curriculum']?.effects?.cxpMult) || 1.25;
+    return Math.pow(mult, lvl);
+  }
+  return 1;
 }
 
 // Expose light debug helpers for manual testing in dev
