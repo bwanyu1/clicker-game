@@ -10,6 +10,7 @@ import { QUESTS } from '../data/quests';
 import { ARTIFACTS, ARTIFACT_MAP, ARTIFACT_SLOTS, ARTIFACT_RARITIES, ARTIFACT_ADD_SCALE, ARTIFACT_MULT_GT1_SCALE, ARTIFACT_MULT_LT1_SCALE } from '../data/artifacts';
 import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR, CODING_XP_PER_CLICK, CODING_XP_BASE, CODING_XP_GROWTH, CODING_CLICK_POWER_PER_LEVEL, OPC_POINTS_PER_LEVEL } from '../config/balance';
 import { CLICK_SKILL_MAP } from '../data/click_skills';
+import { DUNGEON_MAP } from '../data/dungeons';
 
 const initialState = {
   params: 0,
@@ -38,6 +39,7 @@ const initialState = {
   artifacts: {}, // { [artifactKey]: count } where artifactKey = `${id}@${rar}`
   equippedArtifacts: {}, // { [slot]: artifactKey }
   lastOpenSummary: null,
+  dungeon: null, // { id, status: 'running'|'completed', startedAt, endsAt, rewards? }
 };
 
 function initState() {
@@ -522,6 +524,40 @@ function reducer(state, action) {
       const nextEvents = [...state.activeEvents.filter(e=>e.type!=='research_boost'), { id:`rb-${Date.now()}`, type:'research_boost', endsAt: Date.now()+ (action.durationMs||60000) }];
       return { ...state, params: state.params - cost, totalParams: state.totalParams - cost, activeEvents: nextEvents };
     }
+    case 'DUNGEON_START': {
+      if (state.dungeon && state.dungeon.status === 'running') return state;
+      const d = DUNGEON_MAP[action.id];
+      if (!d) return state;
+      const costP = d.cost?.params || 0;
+      const costC = d.cost?.compute || 0;
+      if ((state.params||0) < costP || (state.compute||0) < costC) return state;
+      const now = Date.now();
+      const run = { id: d.id, status: 'running', startedAt: now, endsAt: now + d.durationSec*1000 };
+      return { ...state, params: state.params - costP, totalParams: state.totalParams - costP, compute: state.compute - costC, dungeon: run };
+    }
+    case 'DUNGEON_TICK': {
+      const d = state.dungeon; if (!d || d.status !== 'running') return state;
+      if (Date.now() < d.endsAt) return state;
+      // complete and roll rewards now
+      const def = DUNGEON_MAP[d.id]; if (!def) return { ...state, dungeon: null };
+      const rewards = rollDungeonRewards(def);
+      const ev = { id:`dg-${Date.now()}`, type:'concept_award', note:`${def.name} クリア！報酬を受け取れます`, endsAt: Date.now()+10000 };
+      return { ...state, dungeon: { ...d, status:'completed', rewards }, activeEvents: [...state.activeEvents, ev] };
+    }
+    case 'DUNGEON_CLAIM': {
+      const d = state.dungeon; if (!d || d.status !== 'completed') return state;
+      const def = DUNGEON_MAP[d.id]; if (!def) return { ...state, dungeon: null };
+      // apply rewards
+      let next = { ...state };
+      if (d.rewards?.shards) next.conceptShards = (next.conceptShards||0) + (d.rewards.shards||0);
+      if (Array.isArray(d.rewards?.artifacts)) {
+        const inv = { ...(next.artifacts||{}) };
+        for (const key of d.rewards.artifacts){ inv[key] = (inv[key]||0) + 1; }
+        next.artifacts = inv;
+      }
+      next.dungeon = null;
+      return next;
+    }
     case 'FOCUS_X2': {
       const buildingId = action.buildingId;
       const cost = action.cost || 25000;
@@ -632,6 +668,8 @@ export function GameProvider({ children }) {
       rollEvent(dispatch, stateRef.current);
       // cleanup expired
       dispatch({ type: 'EVENT_CLEAN' });
+      // dungeon completion check
+      dispatch({ type: 'DUNGEON_TICK' });
       // achievements
       checkAchievements(dispatch, stateRef.current);
     }, 1000);
@@ -759,6 +797,8 @@ export function GameProvider({ children }) {
     },
     maxAffordable: (id) => maxAffordableCount(state, id),
     calcPrestigeGain: () => calcPrestigeGain(state),
+    startDungeon: (id) => dispatch({ type:'DUNGEON_START', id }),
+    claimDungeon: () => dispatch({ type:'DUNGEON_CLAIM' }),
   }), [state]);
 
   return <GameContext.Provider value={api}>{children}</GameContext.Provider>;
@@ -971,6 +1011,35 @@ function randomArtifact(){
   let r = Math.random() * total;
   for (const a of ARTIFACTS){ r -= (a.weight||1); if (r <= 0) return a; }
   return ARTIFACTS[0];
+}
+
+// Dungeon reward helpers
+function rollDungeonRewards(def){
+  const out = { shards: def.rewards?.shards || 0, artifacts: [] };
+  const n = def.rewards?.artifacts || 0;
+  for (let i=0;i<n;i++){
+    const picked = randomArtifact();
+    const rar = rollRarity(def.tier);
+    out.artifacts.push(artiKey(picked.id, rar));
+  }
+  return out;
+}
+
+function rollRarity(tier){
+  // return C/U/R/L weights depending on tier
+  // tier1: 94/5/1/0, tier2: 75/18/6/1, tier3: 55/28/14/3, tier4: 40/30/22/8
+  const table = {
+    1: { C:94, U:5, R:1, L:0 },
+    2: { C:75, U:18, R:6, L:1 },
+    3: { C:55, U:28, R:14, L:3 },
+    4: { C:40, U:30, R:22, L:8 },
+  };
+  const w = table[tier] || table[1];
+  const picks = [ ['C', w.C], ['U', w.U], ['R', w.R], ['L', w.L] ];
+  const sum = picks.reduce((s,[,x])=> s + x, 0);
+  let r = Math.random() * sum;
+  for (const [rar, x] of picks){ r -= x; if (r <= 0) return rar; }
+  return 'C';
 }
 
 // ------- Upgrades helpers (multi-level) -------
