@@ -18,6 +18,7 @@ import ParamTuningPanel from './components/ParamTuningPanel';
 import HelpGlossary from './components/HelpGlossary';
 import ConceptsPanel from './components/ConceptsPanel';
 import ArtifactsPanel from './components/ArtifactsPanel';
+import DungeonsPanel from './components/DungeonsPanel';
 import { formatNumber } from './utils/number';
 import React from 'react';
 
@@ -157,6 +158,7 @@ function RightTabs(){
     { label: 'ショップ', content: <BuildingsShop /> },
     { label: 'アップグレード', content: <UpgradesShop /> },
     { label: 'アーティファクト', content: <ArtifactsPanel /> },
+    { label: 'ダンジョン', content: <DungeonsPanel /> },
     { label: 'チューニング', content: <ParamTuningPanel /> },
     { label: 'カード', content: <ConceptsPanel /> },
     { label: 'クエスト', content: <QuestsPanel /> },

@@ -2,27 +2,15 @@ import React from 'react';
 import { useGame } from '../state/store';
 import { ARTIFACT_SLOTS, ARTIFACT_MAP } from '../data/artifacts';
 
-const DISCOVER_COST = 1e6; // Params cost per discover
-
 export default function ArtifactsPanel(){
-  const { state, artiDiscover, artiEquip, artiUnequip, artiCombine } = useGame();
+  const { state, artiEquip, artiUnequip, artiCombine } = useGame();
   const inv = state.artifacts || {};
   const eq = state.equippedArtifacts || {};
 
   return (
     <div className="panel">
       <h2>アーティファクト</h2>
-      <p className="small muted">AIにまつわる希少な装備。スロットごとに1つ装備できます。</p>
-
-      <div className="card">
-        <div className="row">
-          <div className="grow">
-            <strong>発掘</strong>
-            <div className="small muted">ランダムなアーティファクトを1つ発見（コスト: {DISCOVER_COST.toLocaleString()} Params）</div>
-          </div>
-          <button className="btn" disabled={(state.params||0) < DISCOVER_COST} onClick={()=> artiDiscover(DISCOVER_COST)}>発掘する</button>
-        </div>
-      </div>
+      <p className="small muted">アーティファクトは「ダンジョン」クリアで入手できます（発掘は廃止）。スロットごとに1つ装備できます。</p>
 
       <h3 style={{marginTop:12}}>装備中</h3>
       {ARTIFACT_SLOTS.map((slot)=>{
