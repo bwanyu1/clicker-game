@@ -4,7 +4,7 @@ import { CONCEPT_CARDS } from '../data/concepts';
 import PackOpenModal from './PackOpenModal';
 
 export default function ConceptsPanel(){
-  const { state, openPack, shardsToTicket } = useGame();
+  const { state, openPack, openPacks, shardsToTicket } = useGame();
   const counts = React.useMemo(() => state.conceptCards || {}, [state.conceptCards]);
   const have = CONCEPT_CARDS.filter(c => counts[c.id] > 0);
   const notHave = CONCEPT_CARDS.filter(c => !counts[c.id]);
@@ -64,8 +64,19 @@ export default function ConceptsPanel(){
         <span className="pill">Shards: {state.conceptShards||0}</span>
         <button className="btn primary" disabled={!state.conceptTickets} onClick={()=> startOpen(1)}>Open Pack</button>
         <button className="btn ghost" disabled={(state.conceptTickets||0) < 10} onClick={()=> startOpen(10)}>Open 10</button>
+        <button className="btn ghost" disabled={(state.conceptTickets||0) < 50} onClick={()=> openPacks(50)}>Open 50 (Skip)</button>
+        <button className="btn ghost" disabled={(state.conceptTickets||0) < 100} onClick={()=> openPacks(100)}>Open 100 (Skip)</button>
+        <button className="btn ghost" disabled={(state.conceptTickets||0) < 1} onClick={()=> openPacks(state.conceptTickets||0)}>Open All (Skip)</button>
         <button className="btn ghost" disabled={(state.conceptShards||0) < 100} onClick={()=> shardsToTicket()}>100 Shards → 1 Pack</button>
       </div>
+      {state.lastOpenSummary && (
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div className="meta">
+            <strong>Bulk Open Result</strong>
+            <span className="small muted">Opened: {state.lastOpenSummary.opened} / By Rarity: C{state.lastOpenSummary.rarity.C||0} U{state.lastOpenSummary.rarity.U||0} R{state.lastOpenSummary.rarity.R||0} L{state.lastOpenSummary.rarity.L||0}</span>
+          </div>
+        </div>
+      )}
       <Section title={`所持カード ${have.length}/${CONCEPT_CARDS.length}`}> 
         {have.length === 0 ? <div className="small muted">まだカードはありません。</div> :
           <div className="shop">

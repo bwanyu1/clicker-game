@@ -37,6 +37,7 @@ const initialState = {
   clickSkills: {}, // { [skillId]: level }
   artifacts: {}, // { [artifactKey]: count } where artifactKey = `${id}@${rar}`
   equippedArtifacts: {}, // { [slot]: artifactKey }
+  lastOpenSummary: null,
 };
 
 function initState() {
@@ -541,6 +542,25 @@ function reducer(state, action) {
       const events = [...state.activeEvents, { id:`new-${Date.now()}`, type:'concept_award', note:`カード: ${pick.name} ×${cards[pick.id]}`, endsAt: Date.now()+8000 }];
       return { ...state, conceptTickets: tickets, conceptCards: cards, activeEvents: events };
     }
+    case 'OPEN_MANY': {
+      let want = Math.max(1, action.count | 0);
+      const have = state.conceptTickets || 0;
+      const k = Math.min(want, have);
+      if (k <= 0) return state;
+      const cards = { ...(state.conceptCards || {}) };
+      const delta = {};
+      const rarity = { C:0, U:0, R:0, L:0 };
+      for (let i=0;i<k;i++){
+        const pick = rollConcept(cards);
+        cards[pick.id] = (cards[pick.id]||0) + 1;
+        delta[pick.id] = (delta[pick.id]||0) + 1;
+        rarity[pick.rarity] = (rarity[pick.rarity]||0) + 1;
+      }
+      const tickets = have - k;
+      const note = `Packs x${k}: C${rarity.C||0}/U${rarity.U||0}/R${rarity.R||0}/L${rarity.L||0}`;
+      const events = [...state.activeEvents, { id:`bulk-${Date.now()}`, type:'concept_award', note, endsAt: Date.now()+6000 }];
+      return { ...state, conceptTickets: tickets, conceptCards: cards, activeEvents: events, lastOpenSummary: { opened:k, rarity, delta } };
+    }
     case 'SHARDS_TO_TICKET': {
       if ((state.conceptShards||0) < 100) return state;
       return { ...state, conceptShards: state.conceptShards - 100, conceptTickets: (state.conceptTickets||0) + 1 };
@@ -709,6 +729,7 @@ export function GameProvider({ children }) {
     buyParamUpgrade: (id) => dispatch({ type:'BUY_PARAM_UPGRADE', id }),
     startFocusX2: (buildingId, cost, durationMs) => dispatch({ type:'FOCUS_X2', buildingId, cost, durationMs }),
     openPack: () => dispatch({ type:'OPEN_PACK' }),
+    openPacks: (count) => dispatch({ type:'OPEN_MANY', count }),
     shardsToTicket: () => dispatch({ type:'SHARDS_TO_TICKET' }),
     artiDiscover: (cost) => dispatch({ type:'ARTI_DISCOVER', cost }),
     artiEquip: (key) => dispatch({ type:'ARTI_EQUIP', key }),
