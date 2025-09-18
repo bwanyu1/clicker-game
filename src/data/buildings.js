@@ -99,6 +99,18 @@ export const BUILDINGS = [
     costGrowth: { params: 1.07, compute: 1.05 },
     synergy: { with: 'transformer_2017', mult: 1.2 },
   },
+  {
+    id: 'multimodal_2023',
+    name: 'マルチモーダルハブ',
+    era: '2021',
+    baseRate: 800000,
+    dataQAffinity: 0.8,
+    // 画像・音声・テキストを束ねる統合基盤
+    produces: { compute: 5.0 },
+    baseCost: { params: 8e8, compute: 12000 },
+    costGrowth: { params: 1.06, compute: 1.05 },
+    synergy: { with: 'datalake_2018', mult: 1.25 },
+  },
 ];
 
 export const BUILDING_MAP = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
