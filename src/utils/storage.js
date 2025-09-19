@@ -17,6 +17,10 @@ export function saveState(state) {
     // artifacts
     copy.artifacts = copy.artifacts || {};
     copy.equippedArtifacts = copy.equippedArtifacts || {};
+    // challenges
+    copy.challengeSelection = copy.challengeSelection || {};
+    copy.challengeActive = copy.challengeActive || {};
+    copy.challengeCompletions = copy.challengeCompletions || {};
     // conceptCards as id->count map
     copy.conceptCards = copy.conceptCards || {};
     copy.conceptXP = copy.conceptXP || 0;
@@ -62,6 +66,9 @@ export function loadState() {
     parsed.ascensionNodes = parsed.ascensionNodes || {};
     parsed.artifacts = parsed.artifacts || {};
     parsed.equippedArtifacts = parsed.equippedArtifacts || {};
+    parsed.challengeSelection = parsed.challengeSelection || {};
+    parsed.challengeActive = parsed.challengeActive || {};
+    parsed.challengeCompletions = parsed.challengeCompletions || {};
     if (parsed.conceptCards instanceof Array) {
       const obj = {}; for (const id of parsed.conceptCards) obj[id]=(obj[id]||0)+1; parsed.conceptCards = obj;
     }

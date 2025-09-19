@@ -12,6 +12,7 @@ import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR, CODING_XP_PER_CLICK, C
 import { CLICK_SKILL_MAP } from '../data/click_skills';
 import { ASC_NODE_MAP } from '../data/ascension';
 import { DUNGEON_MAP } from '../data/dungeons';
+import { CHALLENGE_MAP } from '../data/challenges';
 
 const initialState = {
   params: 0,
@@ -43,6 +44,9 @@ const initialState = {
   dungeon: null, // { id, status: 'running'|'completed', startedAt, endsAt, rewards? }
   ascensionPoints: 0,
   ascensionNodes: {},
+  challengeSelection: {},
+  challengeActive: {},
+  challengeCompletions: {}, // { [id]: count }
 };
 
 function initState() {
@@ -159,6 +163,8 @@ function effectiveRate(state, b) {
   rate *= conceptRateMult(state);
   rate *= artifactRateMult(state);
   rate *= ascRateMult(state);
+  rate *= challengeRateMult(state);
+  rate *= challengePerkRateMult(state);
   rate *= calcSynergyMult(state, b);
   return rate;
 }
@@ -229,13 +235,13 @@ function nextCostWithMods(state, b, count) {
     const mult = lvl > 0 ? Math.pow(0.85, lvl) : 1;
     cost.compute = Math.ceil(cost.compute * mult);
     // アーティファクト: Computeコスト乗算
-    cost.compute = Math.ceil(cost.compute * artifactComputeCostMult(state));
+    cost.compute = Math.ceil(cost.compute * artifactComputeCostMult(state) * challengeComputeCostMult(state));
   }
   // 概念カード: Paramsコスト減
   if (cost.params) {
     const m = conceptParamsCostMult(state);
     const ma = artifactParamsCostMult(state);
-    cost.params = Math.ceil(cost.params * m * ma * ascParamsCostMult(state));
+    cost.params = Math.ceil(cost.params * m * ma * ascParamsCostMult(state) * challengeParamsCostMult(state) * challengePerkParamsCostMult(state));
   }
   // イベント: GPU大量調達 → GPUリグのParams/Computeコスト−25%
   if (b.id === 'gpu_2009' && hasEvent(state, 'gpu_sale')) {
@@ -357,6 +363,9 @@ function reducer(state, action) {
   if (!('clickSkills' in state)) state = { ...state, clickSkills: {} };
   if (!('ascensionPoints' in state)) state = { ...state, ascensionPoints: 0 };
   if (!('ascensionNodes' in state)) state = { ...state, ascensionNodes: {} };
+  if (!('challengeSelection' in state)) state = { ...state, challengeSelection: {} };
+  if (!('challengeActive' in state)) state = { ...state, challengeActive: {} };
+  if (!('challengeCompletions' in state)) state = { ...state, challengeCompletions: {} };
   switch (action.type) {
     case 'TICK': {
       const dt = action.dt;
@@ -364,13 +373,14 @@ function reducer(state, action) {
       const cps = computePerSec(state);
       // auto clicker from upgrades（手動ボーナスは除外）
       let clickAuto = 0;
-      {
-        const lvl = getUpgradeLevel(state, 'auto_clicker');
-        if (lvl > 0) clickAuto += coreClickPower(state) * dt * lvl; // lvl clicks/sec
-        // skill: thread_booster adds extra auto clicks per sec
-        const sLvl = getSkillLevel(state, 'thread_booster');
-        if (sLvl > 0) clickAuto += coreClickPower(state) * dt * (0.2 * sLvl);
-      }
+  {
+    const lvl = getUpgradeLevel(state, 'auto_clicker');
+    const autoDisabled = challengeDisableAuto(state);
+    if (!autoDisabled && lvl > 0) clickAuto += coreClickPower(state) * dt * lvl; // lvl clicks/sec
+    // skill: thread_booster adds extra auto clicks per sec
+    const sLvl = getSkillLevel(state, 'thread_booster');
+    if (!autoDisabled && sLvl > 0) clickAuto += coreClickPower(state) * dt * (0.2 * sLvl);
+  }
       const paramsGain = pps * dt;
       const computeGain = cps * dt;
       const params = state.params + paramsGain + clickAuto;
@@ -495,6 +505,7 @@ function reducer(state, action) {
     }
     case 'DO_PRESTIGE': {
       const gain = calcPrestigeGain(state) + (state.insights === 0 ? 10 : 0);
+      const comp = rewardChallengeRun(state.challengeActive, state.challengeCompletions);
       return {
         ...initialState,
         // persistent upgrades stay after prestige
@@ -510,11 +521,16 @@ function reducer(state, action) {
         equippedArtifacts: { ...(state.equippedArtifacts || {}) },
         ascensionPoints: state.ascensionPoints,
         ascensionNodes: { ...(state.ascensionNodes||{}) },
+        // Challenges: lock next run and record completions
+        challengeSelection: { ...(state.challengeSelection||{}) },
+        challengeActive: { ...(state.challengeSelection||{}) },
+        challengeCompletions: comp,
       };
     }
     case 'ASCEND': {
       const cost = Math.max(100, action.cost | 0 || 100);
       if ((state.insights||0) < cost) return state;
+      const comp = rewardChallengeRun(state.challengeActive, state.challengeCompletions);
       return {
         ...initialState,
         upgrades: { ...state.upgrades },
@@ -527,6 +543,9 @@ function reducer(state, action) {
         equippedArtifacts: { ...(state.equippedArtifacts || {}) },
         ascensionPoints: (state.ascensionPoints||0) + 1,
         ascensionNodes: { ...(state.ascensionNodes||{}) },
+        challengeSelection: { ...(state.challengeSelection||{}) },
+        challengeActive: { ...(state.challengeSelection||{}) },
+        challengeCompletions: comp,
       };
     }
     case 'ASC_NODE_BUY': {
@@ -660,6 +679,13 @@ function reducer(state, action) {
     case 'SHARDS_TO_TICKET': {
       if ((state.conceptShards||0) < 100) return state;
       return { ...state, conceptShards: state.conceptShards - 100, conceptTickets: (state.conceptTickets||0) + 1 };
+    }
+    case 'CHAL_SET': {
+      const id = action.id; if (!CHALLENGE_MAP[id]) return state;
+      const on = !!action.value;
+      const cur = { ...(state.challengeSelection||{}) };
+      if (on) cur[id] = true; else delete cur[id];
+      return { ...state, challengeSelection: cur };
     }
     case 'ARTI_DISCOVER': {
       const cost = action.cost || 1e6;
@@ -835,6 +861,7 @@ export function GameProvider({ children }) {
     artiEquip: (key) => dispatch({ type:'ARTI_EQUIP', key }),
     artiUnequip: (slot) => dispatch({ type:'ARTI_UNEQUIP', slot }),
     artiCombine: (key) => dispatch({ type:'ARTI_COMBINE', key }),
+    setChallenge: (id, value) => dispatch({ type:'CHAL_SET', id, value }),
     paramsPerSec: () => totalParamsPerSec(state),
     computePerSec: () => computePerSec(state),
     globalAddPct: () => calcGlobalAddPct(state),
@@ -910,6 +937,8 @@ function rollEvent(dispatch, state) {
   }
   p *= conceptEventRateMult(state);
   p *= artifactEventRateMult(state);
+  p *= challengeEventRateMult(state);
+  p *= challengePerkEventRateMult(state);
   if (Math.random() < p) {
     // pick event by weights
     const pick = randomChoice([
@@ -992,6 +1021,58 @@ function conceptEventRateMult(state){
     const c = CONCEPT_CARDS.find(x=> x.id === id);
     if (c?.effects?.eventRateMult) m *= Math.pow(c.effects.eventRateMult, cnt);
   }
+  return m;
+}
+
+// --- Challenge aggregation ---
+function activeChallenges(state){
+  const ch = state.challengeActive || {};
+  return Object.keys(ch).filter(id => ch[id]);
+}
+function challengeRateMult(state){
+  return activeChallenges(state).reduce((m,id)=> m * ((CHALLENGE_MAP[id]?.effects?.rateMult) || 1), 1);
+}
+function challengeParamsCostMult(state){
+  return activeChallenges(state).reduce((m,id)=> m * ((CHALLENGE_MAP[id]?.effects?.paramsCostMult) || 1), 1);
+}
+function challengeComputeCostMult(state){
+  return activeChallenges(state).reduce((m,id)=> m * ((CHALLENGE_MAP[id]?.effects?.computeCostMult) || 1), 1);
+}
+function challengeEventRateMult(state){
+  return activeChallenges(state).reduce((m,id)=> m * ((CHALLENGE_MAP[id]?.effects?.eventRateMult) || 1), 1);
+}
+function challengeDisableAuto(state){
+  return activeChallenges(state).some(id => !!CHALLENGE_MAP[id]?.effects?.disableAuto);
+}
+
+// Reward aggregation from completed challenges
+function rewardChallengeRun(activeMap, completions){
+  const comp = { ...(completions||{}) };
+  for (const id of Object.keys(activeMap||{})){
+    comp[id] = (comp[id]||0) + 1;
+  }
+  return comp;
+}
+
+function challengePerkRateMult(state){
+  const comp = state.challengeCompletions || {};
+  let m = 1;
+  for (const id in comp){
+    const cnt = comp[id]||0; if (!cnt) continue;
+    const eff = CHALLENGE_MAP[id]?.rewardEffects || {};
+    if (eff.rateMult) m *= Math.pow(eff.rateMult, cnt);
+  }
+  return m;
+}
+function challengePerkParamsCostMult(state){
+  const comp = state.challengeCompletions || {};
+  let m = 1;
+  for (const id in comp){ const cnt=comp[id]||0; const eff=CHALLENGE_MAP[id]?.rewardEffects||{}; if (eff.paramsCostMult) m *= Math.pow(eff.paramsCostMult, cnt); }
+  return m;
+}
+function challengePerkEventRateMult(state){
+  const comp = state.challengeCompletions || {};
+  let m = 1; for (const id in comp){ const cnt=comp[id]||0; const eff=CHALLENGE_MAP[id]?.rewardEffects||{}; if (eff.eventRateMult) m *= Math.pow(eff.eventRateMult, cnt); }
   return m;
 }
 

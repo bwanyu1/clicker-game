@@ -20,6 +20,7 @@ import ConceptsPanel from './components/ConceptsPanel';
 import ArtifactsPanel from './components/ArtifactsPanel';
 import DungeonsPanel from './components/DungeonsPanel';
 import AscensionPanel from './components/AscensionPanel';
+import ChallengesPanel from './components/ChallengesPanel';
 import { formatNumber } from './utils/number';
 import React from 'react';
 
@@ -161,6 +162,7 @@ function RightTabs(){
     { label: 'アセンド', content: <AscensionPanel /> },
     { label: 'アーティファクト', content: <ArtifactsPanel /> },
     { label: 'ダンジョン', content: <DungeonsPanel /> },
+    { label: 'チャレンジ', content: <ChallengesPanel /> },
     { label: 'チューニング', content: <ParamTuningPanel /> },
     { label: 'カード', content: <ConceptsPanel /> },
     { label: 'クエスト', content: <QuestsPanel /> },
