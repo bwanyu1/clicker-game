@@ -19,6 +19,7 @@ import HelpGlossary from './components/HelpGlossary';
 import ConceptsPanel from './components/ConceptsPanel';
 import ArtifactsPanel from './components/ArtifactsPanel';
 import DungeonsPanel from './components/DungeonsPanel';
+import AscensionPanel from './components/AscensionPanel';
 import { formatNumber } from './utils/number';
 import React from 'react';
 
@@ -157,6 +158,7 @@ function RightTabs(){
     { label: 'クリック', content: <ClickPanel /> },
     { label: 'ショップ', content: <BuildingsShop /> },
     { label: 'アップグレード', content: <UpgradesShop /> },
+    { label: 'アセンド', content: <AscensionPanel /> },
     { label: 'アーティファクト', content: <ArtifactsPanel /> },
     { label: 'ダンジョン', content: <DungeonsPanel /> },
     { label: 'チューニング', content: <ParamTuningPanel /> },

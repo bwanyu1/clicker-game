@@ -10,6 +10,7 @@ import { QUESTS } from '../data/quests';
 import { ARTIFACTS, ARTIFACT_MAP, ARTIFACT_SLOTS, ARTIFACT_RARITIES, ARTIFACT_ADD_SCALE, ARTIFACT_MULT_GT1_SCALE, ARTIFACT_MULT_LT1_SCALE } from '../data/artifacts';
 import { DATA_Q_COST_MULTIPLIER, DATA_Q_OPPOSITION_FLOOR, CODING_XP_PER_CLICK, CODING_XP_BASE, CODING_XP_GROWTH, CODING_CLICK_POWER_PER_LEVEL, OPC_POINTS_PER_LEVEL } from '../config/balance';
 import { CLICK_SKILL_MAP } from '../data/click_skills';
+import { ASC_NODE_MAP } from '../data/ascension';
 import { DUNGEON_MAP } from '../data/dungeons';
 
 const initialState = {
@@ -40,6 +41,8 @@ const initialState = {
   equippedArtifacts: {}, // { [slot]: artifactKey }
   lastOpenSummary: null,
   dungeon: null, // { id, status: 'running'|'completed', startedAt, endsAt, rewards? }
+  ascensionPoints: 0,
+  ascensionNodes: {},
 };
 
 function initState() {
@@ -128,6 +131,8 @@ function calcSynergyMult(state, b) {
   mult *= buildingPermanentMult(state, b.id);
   // アーティファクト: building-specific multipliers
   mult *= artifactBuildingMult(state, b.id);
+  // アセンド: building-specific multipliers
+  mult *= ascBuildingMult(state, b.id);
   return mult;
 }
 
@@ -153,6 +158,7 @@ function effectiveRate(state, b) {
   if (hasEvent(state, 'quest_boost')) rate *= 1.2;
   rate *= conceptRateMult(state);
   rate *= artifactRateMult(state);
+  rate *= ascRateMult(state);
   rate *= calcSynergyMult(state, b);
   return rate;
 }
@@ -173,6 +179,8 @@ function computePerSec(state) {
   }
   // アーティファクト: Compute産出×
   sum *= artifactComputeRateMult(state);
+  // アセンド: Compute産出（将来拡張用）
+  sum *= ascComputeRateMult(state);
   return sum;
 }
 
@@ -227,7 +235,7 @@ function nextCostWithMods(state, b, count) {
   if (cost.params) {
     const m = conceptParamsCostMult(state);
     const ma = artifactParamsCostMult(state);
-    cost.params = Math.ceil(cost.params * m * ma);
+    cost.params = Math.ceil(cost.params * m * ma * ascParamsCostMult(state));
   }
   // イベント: GPU大量調達 → GPUリグのParams/Computeコスト−25%
   if (b.id === 'gpu_2009' && hasEvent(state, 'gpu_sale')) {
@@ -347,6 +355,8 @@ function reducer(state, action) {
   if (!('codingLevel' in state)) state = { ...state, codingLevel: 0 };
   if (!('opcodePoints' in state)) state = { ...state, opcodePoints: 0 };
   if (!('clickSkills' in state)) state = { ...state, clickSkills: {} };
+  if (!('ascensionPoints' in state)) state = { ...state, ascensionPoints: 0 };
+  if (!('ascensionNodes' in state)) state = { ...state, ascensionNodes: {} };
   switch (action.type) {
     case 'TICK': {
       const dt = action.dt;
@@ -498,7 +508,42 @@ function reducer(state, action) {
         // アーティファクトは永続
         artifacts: { ...(state.artifacts || {}) },
         equippedArtifacts: { ...(state.equippedArtifacts || {}) },
+        ascensionPoints: state.ascensionPoints,
+        ascensionNodes: { ...(state.ascensionNodes||{}) },
       };
+    }
+    case 'ASCEND': {
+      const cost = Math.max(100, action.cost | 0 || 100);
+      if ((state.insights||0) < cost) return state;
+      return {
+        ...initialState,
+        upgrades: { ...state.upgrades },
+        achievements: new Set(state.achievements),
+        insights: (state.insights||0) - cost,
+        lastSavedAt: Date.now(),
+        conceptCards: Array.isArray(state.conceptCards) || state.conceptCards instanceof Set ? state.conceptCards : { ...state.conceptCards },
+        conceptXP: state.conceptXP,
+        artifacts: { ...(state.artifacts || {}) },
+        equippedArtifacts: { ...(state.equippedArtifacts || {}) },
+        ascensionPoints: (state.ascensionPoints||0) + 1,
+        ascensionNodes: { ...(state.ascensionNodes||{}) },
+      };
+    }
+    case 'ASC_NODE_BUY': {
+      const id = action.id; const node = ASC_NODE_MAP[id]; if (!node) return state;
+      if (state.ascensionNodes?.[id]) return state;
+      const ap = state.ascensionPoints || 0; const need = node.cost || 1;
+      if (ap < need) return state;
+      const req = node.req || [];
+      for (const r of req){ if (!state.ascensionNodes?.[r]) return state; }
+      const branch = node.branch || 'misc';
+      if (branch !== 'misc') {
+        for (const k in (state.ascensionNodes||{})){
+          if (state.ascensionNodes[k] && (ASC_NODE_MAP[k]?.branch) === branch) return state;
+        }
+      }
+      const nodes = { ...(state.ascensionNodes||{}), [id]: true };
+      return { ...state, ascensionPoints: ap - need, ascensionNodes: nodes };
     }
     case 'ACH_UNLOCK': {
       if (state.achievements.has(action.id)) return state;
@@ -784,6 +829,8 @@ export function GameProvider({ children }) {
     openPack: () => dispatch({ type:'OPEN_PACK' }),
     openPacks: (count) => dispatch({ type:'OPEN_MANY', count }),
     shardsToTicket: () => dispatch({ type:'SHARDS_TO_TICKET' }),
+    ascend: (cost) => dispatch({ type:'ASCEND', cost }),
+    buyAscNode: (id) => dispatch({ type:'ASC_NODE_BUY', id }),
     artiDiscover: (cost) => dispatch({ type:'ARTI_DISCOVER', cost }),
     artiEquip: (key) => dispatch({ type:'ARTI_EQUIP', key }),
     artiUnequip: (slot) => dispatch({ type:'ARTI_UNEQUIP', slot }),
@@ -1014,6 +1061,32 @@ function artifactBuildingMult(state, buildingId){
   return equippedArtifactList(state).reduce((m, x) => {
     const eff = scaledEffects(x.base, x.rar).buildingMult || {};
     const v = eff[buildingId];
+    return m * (v || 1);
+  }, 1);
+}
+
+// ---- Ascension aggregation ----
+function ascNodeList(state){
+  const nodes = state.ascensionNodes || {};
+  return Object.keys(nodes).filter(id => nodes[id]).map(id => ASC_NODE_MAP[id]).filter(Boolean);
+}
+
+function ascRateMult(state){
+  return ascNodeList(state).reduce((m, n) => m * ((n.effects?.rateMult) || 1), 1);
+}
+
+function ascParamsCostMult(state){
+  return ascNodeList(state).reduce((m, n) => m * ((n.effects?.paramsCostMult) || 1), 1);
+}
+
+function ascComputeRateMult(state){
+  return ascNodeList(state).reduce((m, n) => m * ((n.effects?.computeRateMult) || 1), 1);
+}
+
+function ascBuildingMult(state, buildingId){
+  return ascNodeList(state).reduce((m, n) => {
+    const bm = n.effects?.buildingMult || {};
+    const v = bm[buildingId];
     return m * (v || 1);
   }, 1);
 }
