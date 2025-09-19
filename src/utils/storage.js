@@ -12,6 +12,8 @@ export function saveState(state) {
     copy.paramUpgrades = copy.paramUpgrades || {};
     copy.opcodePoints = copy.opcodePoints || 0;
     copy.clickSkills = copy.clickSkills || {};
+    copy.ascensionPoints = copy.ascensionPoints || 0;
+    copy.ascensionNodes = copy.ascensionNodes || {};
     // artifacts
     copy.artifacts = copy.artifacts || {};
     copy.equippedArtifacts = copy.equippedArtifacts || {};
@@ -56,6 +58,8 @@ export function loadState() {
     parsed.paramUpgrades = parsed.paramUpgrades || {};
     parsed.opcodePoints = parsed.opcodePoints || 0;
     parsed.clickSkills = parsed.clickSkills || {};
+    parsed.ascensionPoints = parsed.ascensionPoints || 0;
+    parsed.ascensionNodes = parsed.ascensionNodes || {};
     parsed.artifacts = parsed.artifacts || {};
     parsed.equippedArtifacts = parsed.equippedArtifacts || {};
     if (parsed.conceptCards instanceof Array) {
