@@ -97,6 +97,38 @@ export const UPGRADES = [
     costGrowth: 1.8,
     effects: { buildingMult: { transformer_2017: 2.0 } },
   },
+  {
+    id: 'x2_datalake_2018',
+    name: 'データレイク×2',
+    desc: 'データレイクの生産×2（恒久）',
+    cost: 160,
+    costGrowth: 1.8,
+    effects: { buildingMult: { datalake_2018: 2.0 } },
+  },
+  {
+    id: 'x2_pretrain_cluster_2018',
+    name: '事前学習クラスタ×2',
+    desc: '事前学習クラスタの生産×2（恒久）',
+    cost: 190,
+    costGrowth: 1.8,
+    effects: { buildingMult: { pretrain_cluster_2018: 2.0 } },
+  },
+  {
+    id: 'x2_genai_inference_2021',
+    name: '生成AI推論センター×2',
+    desc: '生成AI推論センターの生産×2（恒久）',
+    cost: 200,
+    costGrowth: 1.8,
+    effects: { buildingMult: { genai_inference_2021: 2.0 } },
+  },
+  {
+    id: 'x2_multimodal_2023',
+    name: 'マルチモーダルハブ×2',
+    desc: 'マルチモーダルハブの生産×2（恒久）',
+    cost: 220,
+    costGrowth: 1.8,
+    effects: { buildingMult: { multimodal_2023: 2.0 } },
+  },
 ];
 
 export const UPGRADE_MAP = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
