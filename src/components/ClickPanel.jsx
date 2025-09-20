@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useGame } from '../state/store';
+import { formatNumber } from '../utils/number';
 
 export default function ClickPanel() {
   const { click, state, setDataQ, clickPower, codingProgress, clickPowerBreakdown, buyClickSkill, getClickSkillLevel, clickSkillNextCost } = useGame();
@@ -32,11 +33,11 @@ export default function ClickPanel() {
         aria-label="Gain Params"
         title={`1回のクリック内訳:\n(基礎 ${br.base} + カード ${br.cards} + CLv ${br.coding.toFixed(2)}) × クリックマニア ×${br.maniaMult.toFixed(0)} × Micro-ops ×${(Math.pow(1.10, (getClickSkillLevel?getClickSkillLevel('micro_ops'):0))).toFixed(2)}\n= 合計 ${clickPower().toFixed(2)}`}
       >
-        <span>+{clickPower()} Params</span>
+        <span>+{formatNumber(clickPower())} Params/Click</span>
       </button>
       <div className="row" style={{ marginTop: 10 }}>
         <span className="muted small">clickPower</span>
-        <span className="pill">{clickPower()}</span>
+        <span className="pill">{formatNumber(clickPower())}</span>
         <span className="muted small">CLv</span>
         <span className="pill">{cp.level}</span>
         <span className="muted small">OPC</span>
