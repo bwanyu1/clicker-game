@@ -466,6 +466,21 @@ function reducer(state, action) {
         paramUpgrades: { ...state.paramUpgrades, [b.id]: tier + 1 },
       };
     }
+    case 'BUY_PARAM_UPGRADE_MANY': {
+      const b = BUILDING_MAP[action.id];
+      if (!b) return state;
+      const want = action.qty === 'max' ? 1e9 : Math.max(1, action.qty|0);
+      let tier = state.paramUpgrades[b.id] || 0;
+      let params = state.params;
+      let bought = 0;
+      while (bought < want) {
+        const c = paramUpgradeCost(b, tier);
+        if (params < c) break;
+        params -= c; tier += 1; bought += 1;
+      }
+      if (bought <= 0) return state;
+      return { ...state, params, paramUpgrades: { ...state.paramUpgrades, [b.id]: tier } };
+    }
     case 'SAVE_MARK': {
       return { ...state, lastSavedAt: Date.now() };
     }
@@ -851,6 +866,7 @@ export function GameProvider({ children }) {
     claimQuest: (id) => dispatch({ type: 'QUEST_CLAIM', id }),
     startResearchBoost: (cost, durationMs) => dispatch({ type:'RESEARCH_BOOST', cost, durationMs }),
     buyParamUpgrade: (id) => dispatch({ type:'BUY_PARAM_UPGRADE', id }),
+    buyParamUpgradeMany: (id, qty) => dispatch({ type:'BUY_PARAM_UPGRADE_MANY', id, qty }),
     startFocusX2: (buildingId, cost, durationMs) => dispatch({ type:'FOCUS_X2', buildingId, cost, durationMs }),
     openPack: () => dispatch({ type:'OPEN_PACK' }),
     openPacks: (count) => dispatch({ type:'OPEN_MANY', count }),

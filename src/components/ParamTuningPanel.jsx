@@ -5,7 +5,7 @@ import { eraIndexById } from '../data/eras';
 import { formatNumber } from '../utils/number';
 
 export default function ParamTuningPanel(){
-  const { state, buyParamUpgrade } = useGame();
+  const { state, buyParamUpgrade, buyParamUpgradeMany } = useGame();
   const list = React.useMemo(()=>
     BUILDINGS
       .filter(b=> eraIndexById(b.era) <= eraIndexById(state.eraId))
@@ -29,8 +29,11 @@ export default function ParamTuningPanel(){
               <span className="pill small">次: ×{it.multNext.toFixed(2)}</span>
               <span className="pill small">{formatNumber(it.cost)} Params</span>
               <button className="buyBtn" disabled={state.params < it.cost} onClick={()=> buyParamUpgrade(it.id)}>
-                強化
+                ×1
               </button>
+              <button className="btn" disabled={!canBuyN(state, it, 5)} onClick={()=> buyParamUpgradeMany(it.id, 5)}>×5</button>
+              <button className="btn" disabled={!canBuyN(state, it, 10)} onClick={()=> buyParamUpgradeMany(it.id, 10)}>×10</button>
+              <button className="btn ghost" onClick={()=> buyParamUpgradeMany(it.id, 'max')}>MAX</button>
             </div>
           </div>
         ))}
@@ -51,6 +54,17 @@ function paramUpgradeCost(b, tier){
   const base = Math.max(50, Math.floor((b.baseCost?.params || 50) * 15));
   const growth = 1.6;
   return Math.ceil(base * Math.pow(growth, tier));
+}
+
+function canBuyN(state, it, n){
+  let params = state.params;
+  let tier = it.tier;
+  for (let i=0;i<n;i++){
+    const c = paramUpgradeCost(it, tier);
+    if (params < c) return false;
+    params -= c; tier += 1;
+  }
+  return true;
 }
 
 // (表示用) Insights由来の恒久×2は生産時に反映済み。ここではParams由来の倍率のみ表示。
