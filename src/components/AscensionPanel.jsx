@@ -1,6 +1,7 @@
 import React from 'react';
 import { useGame } from '../state/store';
 import { ASC_NODES, ASC_NODE_MAP } from '../data/ascension';
+import { formatNumber } from '../utils/number';
 
 const ASCEND_COST = 100;
 
@@ -15,11 +16,11 @@ export default function AscensionPanel(){
       <div className="card">
         <div className="meta">
           <strong>アセンド</strong>
-          <span className="small muted">コスト: {ASCEND_COST} Insights（深いリセット／恒久要素は維持）</span>
+          <span className="small muted">コスト: {formatNumber(ASCEND_COST)} Insights（深いリセット／恒久要素は維持）</span>
         </div>
         <div className="row">
           <span className="pill">AP: {ap}</span>
-          <span className="pill">Insights: {state.insights||0}</span>
+          <span className="pill">Insights: {formatNumber(state.insights||0)}</span>
           <button className="buyBtn" disabled={(state.insights||0) < ASCEND_COST} onClick={()=> ascend(ASCEND_COST)}>アセンドする</button>
         </div>
       </div>
@@ -60,4 +61,3 @@ function reqText(n){
   if (!n.req || n.req.length===0) return n.branch==='path' ? '分岐（どれか1つ）' : '—';
   return '要: ' + n.req.map(id=> ASC_NODE_MAP[id]?.name || id).join(', ');
 }
-

@@ -1,6 +1,7 @@
 import React from 'react';
 import { UPGRADES } from '../data/upgrades';
 import { useGame } from '../state/store';
+import { formatNumber } from '../utils/number';
 
 export default function UpgradesShop() {
   const { state, buyUpgrade, upgradeNextCost, getUpgradeLevel, clickPowerBreakdown, getClickSkillLevel } = useGame();
@@ -27,7 +28,7 @@ export default function UpgradesShop() {
             })()}
           </div>
           <div className="row">
-            <span className="pill small">Next: {upgradeNextCost(u.id)} Insights</span>
+            <span className="pill small">Next: {formatNumber(upgradeNextCost(u.id))} Insights</span>
             <button className="buyBtn" disabled={state.insights < upgradeNextCost(u.id)} onClick={() => buyUpgrade(u.id)}>
               購入
             </button>
